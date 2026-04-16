@@ -24,11 +24,13 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - README.md
       - LICENSE*
@@ -45,20 +47,24 @@ changelog:
       - "^ci:"
       - "^chore:"
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: iconkit
+    repository:
       owner: Tendo33
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
+    binaries:
+      - iconkit
     homepage: "https://github.com/Tendo33/iconkit"
     description: "Developer-friendly CLI tool for icon processing - resize and round corners in one command"
     license: "MIT"
-    skip_upload: true
-    install: |
-      bin.install "iconkit"
-    test: |
-      system "#{bin}/iconkit", "--help"
+    url:
+      verified: github.com/Tendo33/iconkit
+    caveats: |
+      iconkit is currently distributed as an unsigned binary.
+      If macOS blocks the executable, run:
+        xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/iconkit/latest/iconkit"
 
 release:
   github:

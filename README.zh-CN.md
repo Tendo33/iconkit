@@ -55,10 +55,16 @@
 curl -fsSL https://raw.githubusercontent.com/Tendo33/iconkit/main/install.sh | sh
 ```
 
-### Homebrew（macOS / Linux）
+### Homebrew（仅 macOS）
 
 ```bash
-brew install Tendo33/tap/iconkit
+brew install --cask Tendo33/homebrew-tap/iconkit
+```
+
+当前 `iconkit` 分发的是未签名的 macOS 二进制文件。如果安装后被 macOS 阻止运行，可执行：
+
+```bash
+xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/iconkit/latest/iconkit"
 ```
 
 ### Go 安装
@@ -66,6 +72,8 @@ brew install Tendo33/tap/iconkit
 ```bash
 go install github.com/Tendo33/iconkit@latest
 ```
+
+Linux 用户请使用一键安装脚本、`go install`，或从 Releases 下载二进制文件。
 
 ### 二进制下载
 
