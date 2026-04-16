@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -26,6 +27,26 @@ func createTestPNG(t *testing.T, dir, name string, w, h int) string {
 	}
 	defer f.Close()
 	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func createTestJPEG(t *testing.T, dir, name string, w, h int) string {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.NRGBA{R: 120, G: 90, B: 60, A: 255})
+		}
+	}
+	path := filepath.Join(dir, name)
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := jpeg.Encode(f, img, &jpeg.Options{Quality: 90}); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -98,6 +119,150 @@ func TestRun_WithRadius(t *testing.T) {
 	_, _, _, a := img.At(0, 0).RGBA()
 	if a != 0 {
 		t.Error("corner pixel should be transparent after rounding")
+	}
+}
+
+func TestRun_OriginalSizeOutput_WithRadiusOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:              inputPath,
+		Radius:             20,
+		OriginalSizeOutput: true,
+		Out:                outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	if got := filepath.Base(results[0].Path); got != "icon.png" {
+		t.Fatalf("output filename = %q, want %q", got, "icon.png")
+	}
+
+	if results[0].Size != 256 {
+		t.Fatalf("result size = %d, want 256", results[0].Size)
+	}
+
+	f, err := os.Open(results[0].Path)
+	if err != nil {
+		t.Fatalf("open output: %v", err)
+	}
+	defer f.Close()
+
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if img.Bounds().Dx() != 256 || img.Bounds().Dy() != 256 {
+		t.Fatalf("output dimensions = %dx%d, want 256x256", img.Bounds().Dx(), img.Bounds().Dy())
+	}
+}
+
+func TestRun_OriginalSizeOutput_WithPaddingOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:              inputPath,
+		Padding:            0.1,
+		OriginalSizeOutput: true,
+		Out:                outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if got := filepath.Base(results[0].Path); got != "icon.png" {
+		t.Fatalf("output filename = %q, want %q", got, "icon.png")
+	}
+	if results[0].Size != 256 {
+		t.Fatalf("result size = %d, want 256", results[0].Size)
+	}
+}
+
+func TestRun_OriginalSizeOutput_WithBackgroundOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	imgPath := filepath.Join(tmpDir, "transparent.png")
+	img := image.NewNRGBA(image.Rect(0, 0, 256, 256))
+	f, _ := os.Create(imgPath)
+	png.Encode(f, img)
+	f.Close()
+
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:              imgPath,
+		BgColor:            color.NRGBA{R: 255, G: 0, B: 0, A: 255},
+		OriginalSizeOutput: true,
+		Out:                outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	outF, err := os.Open(results[0].Path)
+	if err != nil {
+		t.Fatalf("open output: %v", err)
+	}
+	defer outF.Close()
+
+	outImg, err := png.Decode(outF)
+	if err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if outImg.Bounds().Dx() != 256 || outImg.Bounds().Dy() != 256 {
+		t.Fatalf("output dimensions = %dx%d, want 256x256", outImg.Bounds().Dx(), outImg.Bounds().Dy())
+	}
+	r, _, _, a := outImg.At(128, 128).RGBA()
+	if a == 0 {
+		t.Fatal("background should fill transparent pixels")
+	}
+	if r>>8 != 255 {
+		t.Fatalf("background should be red, got r=%d", r>>8)
+	}
+}
+
+func TestRun_OriginalSizeOutput_PreservesRectangularDimensions(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "banner.png", 320, 180)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:              inputPath,
+		Radius:             20,
+		OriginalSizeOutput: true,
+		Out:                outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	f, err := os.Open(results[0].Path)
+	if err != nil {
+		t.Fatalf("open output: %v", err)
+	}
+	defer f.Close()
+
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if img.Bounds().Dx() != 320 || img.Bounds().Dy() != 180 {
+		t.Fatalf("output dimensions = %dx%d, want 320x180", img.Bounds().Dx(), img.Bounds().Dy())
 	}
 }
 
@@ -555,5 +720,48 @@ func TestRun_BatchWithICO(t *testing.T) {
 	icoPath := filepath.Join(outDir, "logo.ico")
 	if _, err := os.Stat(icoPath); os.IsNotExist(err) {
 		t.Errorf("expected %s to exist", icoPath)
+	}
+}
+
+func TestRun_OriginalSizeOutput_BatchAvoidsNameCollisions(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputDir := filepath.Join(tmpDir, "input")
+	if err := os.MkdirAll(inputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	createTestPNG(t, inputDir, "logo.png", 128, 128)
+	createTestJPEG(t, inputDir, "logo.jpg", 128, 128)
+
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:              inputDir,
+		Radius:             18,
+		OriginalSizeOutput: true,
+		Out:                outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	expected := map[string]bool{
+		"logo-png.png": false,
+		"logo-jpg.png": false,
+	}
+	for _, result := range results {
+		name := filepath.Base(result.Path)
+		if _, ok := expected[name]; !ok {
+			t.Fatalf("unexpected output filename: %s", name)
+		}
+		expected[name] = true
+	}
+
+	for name, seen := range expected {
+		if !seen {
+			t.Fatalf("expected output file missing: %s", name)
+		}
 	}
 }

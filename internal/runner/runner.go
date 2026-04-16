@@ -12,28 +12,31 @@ import (
 
 	_ "image/jpeg"
 
-	"github.com/disintegration/imaging"
 	"github.com/Tendo33/iconkit/internal/preset"
 	"github.com/Tendo33/iconkit/internal/processor"
+	"github.com/disintegration/imaging"
 )
 
 type Options struct {
-	Input   string
-	Sizes   []int
-	Radius  int
-	Preset  string
-	Out     string
-	Force   bool
-	Padding float64
-	BgColor color.Color // nil = transparent
-	Ico     bool        // generate favicon.ico
+	Input              string
+	Sizes              []int
+	Radius             int
+	Preset             string
+	Out                string
+	Force              bool
+	Padding            float64
+	BgColor            color.Color // nil = transparent
+	Ico                bool        // generate favicon.ico
+	OriginalSizeOutput bool
 }
 
 var DefaultSizes = []int{16, 32, 64, 128}
 
 type Result struct {
-	Path string
-	Size int
+	Path   string
+	Size   int
+	Width  int
+	Height int
 }
 
 func Run(opts Options, w io.Writer) ([]Result, error) {
@@ -46,9 +49,17 @@ func Run(opts Options, w io.Writer) ([]Result, error) {
 		return nil, err
 	}
 
-	sizes, err := resolveSizes(opts)
+	outputNames, err := buildOriginalOutputNames(inputs, opts)
 	if err != nil {
 		return nil, err
+	}
+
+	var sizes []int
+	if !opts.OriginalSizeOutput {
+		sizes, err = resolveSizes(opts)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err := os.MkdirAll(opts.Out, 0o755); err != nil {
@@ -57,7 +68,7 @@ func Run(opts Options, w io.Writer) ([]Result, error) {
 
 	var results []Result
 	for _, inputPath := range inputs {
-		r, err := processOne(inputPath, sizes, opts, w)
+		r, err := processOne(inputPath, sizes, opts, outputNames[inputPath], w)
 		if err != nil {
 			return results, err
 		}
@@ -124,51 +135,104 @@ func resolveSizes(opts Options) ([]int, error) {
 	return DefaultSizes, nil
 }
 
-func processOne(inputPath string, sizes []int, opts Options, w io.Writer) ([]Result, error) {
+func buildOriginalOutputNames(inputs []string, opts Options) (map[string]string, error) {
+	names := make(map[string]string, len(inputs))
+	if !opts.OriginalSizeOutput {
+		return names, nil
+	}
+
+	info, err := os.Stat(opts.Input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to access input: %w", err)
+	}
+
+	if !info.IsDir() {
+		if len(inputs) == 1 {
+			names[inputs[0]] = fmt.Sprintf("%s.png", fileBaseName(inputs[0]))
+		}
+		return names, nil
+	}
+
+	baseNameCounts := make(map[string]int, len(inputs))
+	for _, inputPath := range inputs {
+		baseNameCounts[fileBaseName(inputPath)]++
+	}
+
+	for _, inputPath := range inputs {
+		baseName := fileBaseName(inputPath)
+		if baseNameCounts[baseName] == 1 {
+			names[inputPath] = fmt.Sprintf("%s.png", baseName)
+			continue
+		}
+		names[inputPath] = fmt.Sprintf("%s-%s.png", baseName, normalizedInputExt(inputPath))
+	}
+
+	return names, nil
+}
+
+func processOne(inputPath string, sizes []int, opts Options, originalOutputName string, w io.Writer) ([]Result, error) {
 	img, err := openImage(inputPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Apply padding first (before resize, on the source image)
+	sourceWidth := img.Bounds().Dx()
+	sourceHeight := img.Bounds().Dy()
+	sourceScaleBase := sourceWidth
+	if sourceHeight < sourceScaleBase {
+		sourceScaleBase = sourceHeight
+	}
+
 	if opts.Padding > 0 {
 		img = processor.Pad(img, opts.Padding, opts.BgColor)
 	}
 
-	originalSize := img.Bounds().Dx()
 	baseName := fileBaseName(inputPath)
 	multiFile := false
 	if info, _ := os.Stat(opts.Input); info != nil && info.IsDir() {
 		multiFile = true
 	}
 
+	type targetDimensions struct {
+		width  int
+		height int
+	}
+
+	targets := make([]targetDimensions, 0, len(sizes))
+	if opts.OriginalSizeOutput {
+		targets = append(targets, targetDimensions{width: sourceWidth, height: sourceHeight})
+	} else {
+		for _, size := range sizes {
+			targets = append(targets, targetDimensions{width: size, height: size})
+		}
+	}
+
 	var results []Result
 	var icoImages []image.Image
 
-	for _, size := range sizes {
-		resized := processor.Resize(img, size)
+	for _, target := range targets {
+		outputWidth := target.width
+		outputHeight := target.height
+		resized := imaging.Resize(img, outputWidth, outputHeight, imaging.Lanczos)
 
 		var output image.Image = resized
 		if opts.Radius > 0 {
-			scaledR := processor.ScaleRadius(opts.Radius, originalSize, size)
-			output = processor.RoundCorners(resized, scaledR)
+			scaledRadius := opts.Radius
+			if !opts.OriginalSizeOutput {
+				scaledRadius = processor.ScaleRadius(opts.Radius, sourceScaleBase, outputWidth)
+			}
+			output = processor.RoundCorners(resized, scaledRadius)
 		}
 
 		if opts.BgColor != nil {
 			output = processor.FillBackground(output, opts.BgColor)
 		}
 
-		// Collect for ICO (only sizes <= 256)
-		if opts.Ico && size <= 256 {
+		if opts.Ico && outputWidth == outputHeight && outputWidth <= 256 {
 			icoImages = append(icoImages, output)
 		}
 
-		var filename string
-		if multiFile {
-			filename = fmt.Sprintf("%s-%d.png", baseName, size)
-		} else {
-			filename = fmt.Sprintf("icon-%d.png", size)
-		}
+		filename := outputFilename(baseName, outputWidth, multiFile, opts.OriginalSizeOutput, originalOutputName)
 		outPath := filepath.Join(opts.Out, filename)
 
 		if !opts.Force {
@@ -181,11 +245,20 @@ func processOne(inputPath string, sizes []int, opts Options, w io.Writer) ([]Res
 			return results, fmt.Errorf("failed to save %s: %w", outPath, err)
 		}
 
-		fmt.Fprintf(w, "  ✓ %s (%dx%d)\n", outPath, size, size)
-		results = append(results, Result{Path: outPath, Size: size})
+		fmt.Fprintf(w, "  ok %s (%dx%d)\n", outPath, outputWidth, outputHeight)
+
+		resultSize := outputWidth
+		if outputWidth != outputHeight {
+			resultSize = 0
+		}
+		results = append(results, Result{
+			Path:   outPath,
+			Size:   resultSize,
+			Width:  outputWidth,
+			Height: outputHeight,
+		})
 	}
 
-	// Generate favicon.ico
 	if opts.Ico && len(icoImages) > 0 {
 		icoName := "favicon.ico"
 		if multiFile {
@@ -203,7 +276,7 @@ func processOne(inputPath string, sizes []int, opts Options, w io.Writer) ([]Res
 			return results, fmt.Errorf("failed to save %s: %w", icoPath, err)
 		}
 
-		fmt.Fprintf(w, "  ✓ %s (favicon, %d sizes)\n", icoPath, len(icoImages))
+		fmt.Fprintf(w, "  ok %s (favicon, %d sizes)\n", icoPath, len(icoImages))
 		results = append(results, Result{Path: icoPath, Size: 0})
 	}
 
@@ -246,4 +319,21 @@ func fileBaseName(path string) string {
 	base := filepath.Base(path)
 	ext := filepath.Ext(base)
 	return strings.TrimSuffix(base, ext)
+}
+
+func normalizedInputExt(path string) string {
+	return strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+}
+
+func outputFilename(baseName string, size int, multiFile bool, originalSizeOutput bool, originalOutputName string) string {
+	if originalSizeOutput {
+		if originalOutputName != "" {
+			return originalOutputName
+		}
+		return fmt.Sprintf("%s.png", baseName)
+	}
+	if multiFile {
+		return fmt.Sprintf("%s-%d.png", baseName, size)
+	}
+	return fmt.Sprintf("icon-%d.png", size)
 }

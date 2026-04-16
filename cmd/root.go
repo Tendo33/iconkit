@@ -34,10 +34,15 @@ var rootCmd = &cobra.Command{
 
 It takes a single image (or a directory of images) and outputs multiple sizes
 with optional rounded corners, padding, background color, and favicon.ico.
+Without -s or -p, using -r, --pad, or --bg keeps the original dimensions and
+writes a single processed PNG to the output directory.
+In batch mode, files are written as {name}.png, and same-name conflicts become {name}-{source-ext}.png.
+When --ico is enabled, iconkit keeps the existing multi-size favicon flow.
 
 Examples:
   iconkit icon.png
   iconkit icon.png -s 16,32,64,128
+  iconkit icon.png -r 20
   iconkit icon.png -r 20 -s 16,32,64,128
   iconkit icon.png -p web
   iconkit icon.png -p chrome-ext
@@ -52,15 +57,15 @@ Examples:
 }
 
 func init() {
-	rootCmd.Flags().StringVarP(&sizes, "sizes", "s", "", "output sizes, comma-separated (e.g. 16,32,64)")
-	rootCmd.Flags().IntVarP(&radius, "radius", "r", 0, "corner radius in pixels")
+	rootCmd.Flags().StringVarP(&sizes, "sizes", "s", "", "output sizes, comma-separated; overrides processing-only mode (e.g. 16,32,64)")
+	rootCmd.Flags().IntVarP(&radius, "radius", "r", 0, "corner radius in pixels; without -s/-p outputs one PNG at the original size")
 	rootCmd.Flags().StringVarP(&presetName, "preset", "p", "", "size preset (web, ios, android, chrome-ext, firefox-ext, pwa)")
 	rootCmd.Flags().StringVarP(&outDir, "out", "o", "", "output directory (default: ./icons)")
 	rootCmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing files")
 	rootCmd.Flags().StringVarP(&configFile, "config", "c", "", "config file path (default: auto-detect iconkit.json)")
-	rootCmd.Flags().Float64Var(&padding, "pad", 0, "padding ratio around icon (0.0-0.5, e.g. 0.1 = 10%)")
-	rootCmd.Flags().StringVar(&bgColor, "bg", "", "background color in hex (e.g. \"#ffffff\", \"ff0000\")")
-	rootCmd.Flags().BoolVar(&ico, "ico", false, "also generate favicon.ico (sizes <= 256)")
+	rootCmd.Flags().Float64Var(&padding, "pad", 0, "padding ratio around icon (0.0-0.5, e.g. 0.1 = 10%); without -s/-p outputs one PNG at the original size")
+	rootCmd.Flags().StringVar(&bgColor, "bg", "", "background color in hex (e.g. \"#ffffff\", \"ff0000\"); without -s/-p outputs one PNG at the original size")
+	rootCmd.Flags().BoolVar(&ico, "ico", false, "also generate favicon.ico (sizes <= 256); keeps multi-size output")
 }
 
 func Execute() error {
@@ -178,6 +183,11 @@ func buildOptions(inputPath string) (runner.Options, error) {
 			return opts, err
 		}
 		opts.Sizes = parsed
+	}
+
+	hasPureProcessing := opts.Radius > 0 || opts.Padding > 0 || opts.BgColor != nil
+	if presetName == "" && len(opts.Sizes) == 0 && hasPureProcessing && !opts.Ico {
+		opts.OriginalSizeOutput = true
 	}
 
 	return opts, nil

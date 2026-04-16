@@ -147,7 +147,11 @@ func TestRootCmd_AllowsOptionalInputArgForConfigInput(t *testing.T) {
 func TestRootCmd_HelpTextHasNoMojibake(t *testing.T) {
 	checks := []string{
 		rootCmd.Short,
+		rootCmd.Long,
+		rootCmd.Flag("sizes").Usage,
+		rootCmd.Flag("radius").Usage,
 		rootCmd.Flag("pad").Usage,
+		rootCmd.Flag("bg").Usage,
 		rootCmd.Flag("ico").Usage,
 	}
 
@@ -157,11 +161,38 @@ func TestRootCmd_HelpTextHasNoMojibake(t *testing.T) {
 		}
 	}
 
-	if got := rootCmd.Flag("pad").Usage; got != "padding ratio around icon (0.0-0.5, e.g. 0.1 = 10%)" {
+	if got := rootCmd.Flag("sizes").Usage; got != "output sizes, comma-separated; overrides processing-only mode (e.g. 16,32,64)" {
+		t.Fatalf("sizes usage = %q", got)
+	}
+	if got := rootCmd.Flag("radius").Usage; got != "corner radius in pixels; without -s/-p outputs one PNG at the original size" {
+		t.Fatalf("radius usage = %q", got)
+	}
+	if got := rootCmd.Flag("pad").Usage; got != "padding ratio around icon (0.0-0.5, e.g. 0.1 = 10%); without -s/-p outputs one PNG at the original size" {
 		t.Fatalf("pad usage = %q", got)
 	}
-	if got := rootCmd.Flag("ico").Usage; got != "also generate favicon.ico (sizes <= 256)" {
+	if got := rootCmd.Flag("bg").Usage; got != "background color in hex (e.g. \"#ffffff\", \"ff0000\"); without -s/-p outputs one PNG at the original size" {
+		t.Fatalf("bg usage = %q", got)
+	}
+	if got := rootCmd.Flag("ico").Usage; got != "also generate favicon.ico (sizes <= 256); keeps multi-size output" {
 		t.Fatalf("ico usage = %q", got)
+	}
+}
+
+func TestRootCmd_HelpText_DescribesProcessingOnlyMode(t *testing.T) {
+	if !strings.Contains(rootCmd.Long, "Without -s or -p, using -r, --pad, or --bg keeps the original dimensions") {
+		t.Fatalf("rootCmd.Long should describe processing-only mode, got:\n%s", rootCmd.Long)
+	}
+
+	if !strings.Contains(rootCmd.Long, "In batch mode, files are written as {name}.png") {
+		t.Fatalf("rootCmd.Long should describe batch naming, got:\n%s", rootCmd.Long)
+	}
+
+	if !strings.Contains(rootCmd.Long, "same-name conflicts become {name}-{source-ext}.png") {
+		t.Fatalf("rootCmd.Long should describe collision naming, got:\n%s", rootCmd.Long)
+	}
+
+	if !strings.Contains(rootCmd.Flag("ico").Usage, "keeps multi-size output") {
+		t.Fatalf("ico usage should mention multi-size output, got %q", rootCmd.Flag("ico").Usage)
 	}
 }
 
@@ -185,6 +216,88 @@ func TestBuildOptions_RejectsPaddingOutOfRange(t *testing.T) {
 	_, err = buildOptions("icon.png")
 	if err == nil {
 		t.Fatal("expected error for padding = 0.6")
+	}
+}
+
+func TestBuildOptions_RadiusWithoutSizesUsesOriginalSizeOutput(t *testing.T) {
+	resetRootFlags()
+	t.Cleanup(resetRootFlags)
+
+	radius = 24
+
+	opts, err := buildOptions("icon.png")
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+
+	if !opts.OriginalSizeOutput {
+		t.Fatal("OriginalSizeOutput = false, want true")
+	}
+}
+
+func TestBuildOptions_RadiusWithSizesKeepsMultiSizeOutput(t *testing.T) {
+	resetRootFlags()
+	t.Cleanup(resetRootFlags)
+
+	radius = 24
+	sizes = "16,32"
+
+	opts, err := buildOptions("icon.png")
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+
+	if opts.OriginalSizeOutput {
+		t.Fatal("OriginalSizeOutput = true, want false")
+	}
+}
+
+func TestBuildOptions_PaddingWithoutSizesUsesOriginalSizeOutput(t *testing.T) {
+	resetRootFlags()
+	t.Cleanup(resetRootFlags)
+
+	padding = 0.1
+
+	opts, err := buildOptions("icon.png")
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+
+	if !opts.OriginalSizeOutput {
+		t.Fatal("OriginalSizeOutput = false, want true")
+	}
+}
+
+func TestBuildOptions_BackgroundWithoutSizesUsesOriginalSizeOutput(t *testing.T) {
+	resetRootFlags()
+	t.Cleanup(resetRootFlags)
+
+	bgColor = "#ffffff"
+
+	opts, err := buildOptions("icon.png")
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+
+	if !opts.OriginalSizeOutput {
+		t.Fatal("OriginalSizeOutput = false, want true")
+	}
+}
+
+func TestBuildOptions_PureProcessingWithIcoKeepsMultiSizeOutput(t *testing.T) {
+	resetRootFlags()
+	t.Cleanup(resetRootFlags)
+
+	padding = 0.1
+	ico = true
+
+	opts, err := buildOptions("icon.png")
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+
+	if opts.OriginalSizeOutput {
+		t.Fatal("OriginalSizeOutput = true, want false when ico is enabled")
 	}
 }
 

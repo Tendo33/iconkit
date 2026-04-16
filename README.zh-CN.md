@@ -88,6 +88,9 @@ iconkit icon.png
 # 使用 web 预设并生成 favicon.ico
 iconkit icon.png -p web --ico
 
+# 只加圆角，保持原图尺寸并输出一张 PNG
+iconkit icon.png -r 20
+
 # 加圆角并输出到自定义目录
 iconkit icon.png -r 20 -o ./dist
 
@@ -108,6 +111,15 @@ iconkit [input] [options]
 ```bash
 # 默认生成 16、32、64、128 像素图标
 iconkit icon.png
+
+# 只使用圆角时，保持原图尺寸并只输出一张 PNG
+iconkit icon.png -r 20
+
+# 只增加留白时，保持原图尺寸并只输出一张 PNG
+iconkit icon.png --pad 0.1
+
+# 只填充背景时，保持原图尺寸并只输出一张 PNG
+iconkit icon.png --bg "#ffffff"
 
 # 指定尺寸并加圆角
 iconkit icon.png -r 20 -s 16,32,64,128
@@ -153,7 +165,7 @@ iconkit icon.png -c iconkit.json
 
 | 参数 | 短参数 | 说明 | 默认值 |
 |------|--------|------|--------|
-| `--sizes` | `-s` | 输出尺寸，逗号分隔 | `16,32,64,128` |
+| `--sizes` | `-s` | 输出尺寸，逗号分隔 | 自动（默认 `16,32,64,128`；仅使用 `-r` / `--pad` / `--bg` 时保持原图尺寸） |
 | `--radius` | `-r` | 圆角半径，单位像素 | `0` |
 | `--preset` | `-p` | 使用下方预设尺寸 | 无 |
 | `--out` | `-o` | 输出目录 | `./icons` |
@@ -165,6 +177,8 @@ iconkit icon.png -c iconkit.json
 | `--version` | `-v` | 输出版本号 | 无 |
 
 当指定 `-p` 时，`-s` 会被忽略。
+当使用 `-r`、`--pad` 或 `--bg`，且未指定 `-s`、`-p` 时，iconkit 会输出一张保持原图尺寸的 PNG。
+当同时启用 `--ico` 时，仍保留现有的多尺寸 favicon 生成流程。
 
 ## 预设尺寸
 
@@ -248,24 +262,64 @@ badge-32.png
 badge-64.png
 ```
 
+如果是未指定 `-s`、`-p` 的“纯加工模式”，批量处理时每张源图会保持原图尺寸，并只输出一张 PNG：
+
+```bash
+iconkit ./assets/ -r 20
+```
+
+典型输出如下：
+
+```text
+logo.png
+badge.png
+```
+
+如果目录里存在同名但不同扩展的源图，例如 `logo.png` 和 `logo.jpg`，iconkit 会自动把源扩展拼到输出名里，避免互相覆盖：
+
+```text
+logo-png.png
+logo-jpg.png
+```
+
 批量模式下如果启用 `--ico`，每张源图还会额外生成一个以原文件名命名的 `.ico` 文件。
 
 ## 输出结果
 
-单文件输入时，输出结构类似：
+iconkit 会按下面的优先级决定输出形态：
+
+1. 如果指定了 `-p`，使用预设尺寸。
+2. 否则如果指定了 `-s`，使用显式尺寸列表。
+3. 否则如果指定了 `-r`、`--pad`、`--bg` 中任意一个，输出一张保持原图尺寸的 PNG。
+4. 否则回退到默认尺寸 `16,32,64,128`。
+5. 如果同时启用 `--ico`，仍保留现有的多尺寸 favicon 生成流程。
+
+单文件输入且走默认多尺寸模式时，输出结构类似：
 
 ```text
 ./icons/
 |- icon-16.png
 |- icon-32.png
-|- icon-48.png
 |- icon-64.png
-|- icon-128.png
-|- icon-256.png
-`- favicon.ico
+`- icon-128.png
 ```
 
-批量输入时，文件名格式为 `{name}-{size}.png` 和 `{name}.ico`。
+单文件输入且走纯加工模式时，会沿用源文件的基础文件名：
+
+```bash
+iconkit icon.jpg -r 20
+```
+
+```text
+./icons/
+`- icon.png
+```
+
+批量输入且走多尺寸模式时，文件名格式为 `{name}-{size}.png`。
+
+批量输入且走纯加工模式时，默认文件名格式为 `{name}.png`；如果检测到同名冲突，则改为 `{name}-{source-ext}.png`。
+
+启用 `--ico` 后，单文件输入会额外生成 `favicon.ico`，批量输入会额外生成 `{name}.ico`。
 
 ## 开发
 
@@ -284,8 +338,4 @@ git push origin v2.1.0
 发布流程由 GoReleaser 与 GitHub Actions 自动完成。
 
 ## 许可证
-
-Before pushing a release tag, add a `GORELEASER_GITHUB_TOKEN` repository secret.
-Use a GitHub PAT that can write to both `Tendo33/iconkit` and `Tendo33/homebrew-tap`.
-If you use a fine-grained PAT, select both repositories and grant repository contents write access.
 MIT

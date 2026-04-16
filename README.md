@@ -88,6 +88,9 @@ iconkit icon.png
 # Web preset + favicon.ico
 iconkit icon.png -p web --ico
 
+# Rounded corners, keeping the original size
+iconkit icon.png -r 20
+
 # Rounded corners with a custom output directory
 iconkit icon.png -r 20 -o ./dist
 
@@ -108,6 +111,15 @@ iconkit [input] [options]
 ```bash
 # Default: generates 16, 32, 64, 128 px icons
 iconkit icon.png
+
+# Radius only: keeps the original size and outputs a single PNG
+iconkit icon.png -r 20
+
+# Padding only: keeps the original size and outputs a single PNG
+iconkit icon.png --pad 0.1
+
+# Background fill only: keeps the original size and outputs a single PNG
+iconkit icon.png --bg "#ffffff"
 
 # Custom sizes with rounded corners
 iconkit icon.png -r 20 -s 16,32,64,128
@@ -153,7 +165,7 @@ iconkit icon.png -c iconkit.json
 
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
-| `--sizes` | `-s` | Output sizes, comma-separated | `16,32,64,128` |
+| `--sizes` | `-s` | Output sizes, comma-separated | auto (`16,32,64,128`; with `-r` / `--pad` / `--bg` only, keep original dimensions) |
 | `--radius` | `-r` | Corner radius in pixels | `0` |
 | `--preset` | `-p` | Size preset from the table below | none |
 | `--out` | `-o` | Output directory | `./icons` |
@@ -165,6 +177,8 @@ iconkit icon.png -c iconkit.json
 | `--version` | `-v` | Print version | none |
 
 When `-p` is specified, `-s` is ignored.
+When `-r`, `--pad`, or `--bg` is used without `-s` or `-p`, iconkit writes a single PNG that keeps the source dimensions.
+When `--ico` is also enabled, iconkit keeps the existing multi-size favicon flow.
 
 ## Presets
 
@@ -248,24 +262,64 @@ badge-32.png
 badge-64.png
 ```
 
+If you run a "processing-only" command in batch mode without `-s` or `-p`, each source image keeps its original dimensions and writes one PNG:
+
+```bash
+iconkit ./assets/ -r 20
+```
+
+Typical output:
+
+```text
+logo.png
+badge.png
+```
+
+If two source files share the same base name but have different extensions, iconkit appends the source extension to avoid collisions:
+
+```text
+logo-png.png
+logo-jpg.png
+```
+
 When `--ico` is used in batch mode, each image gets its own `.ico` file named after the source file.
 
 ## Output
 
-Single-file input uses this structure:
+iconkit chooses the output shape using these rules:
+
+1. If `-p` is set, the preset sizes are used.
+2. Else if `-s` is set, the explicit sizes are used.
+3. Else if one of `-r`, `--pad`, or `--bg` is set, iconkit writes a single PNG that keeps the source dimensions.
+4. Else iconkit falls back to the default sizes `16,32,64,128`.
+5. If `--ico` is enabled, iconkit keeps the existing multi-size favicon flow.
+
+Single-file input with default sizes uses this structure:
 
 ```text
 ./icons/
 |- icon-16.png
 |- icon-32.png
-|- icon-48.png
 |- icon-64.png
-|- icon-128.png
-|- icon-256.png
-`- favicon.ico
+`- icon-128.png
 ```
 
-Batch input uses `{name}-{size}.png` and `{name}.ico`.
+Single-file input in processing-only mode uses the original base name:
+
+```bash
+iconkit icon.jpg -r 20
+```
+
+```text
+./icons/
+`- icon.png
+```
+
+Batch input with multi-size output uses `{name}-{size}.png`.
+
+Batch input in processing-only mode uses `{name}.png`, unless a same-name conflict is detected, in which case iconkit uses `{name}-{source-ext}.png`.
+
+With `--ico`, iconkit also writes `favicon.ico` for single-file input, or `{name}.ico` for batch input.
 
 ## Development
 
