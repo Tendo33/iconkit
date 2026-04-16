@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -197,4 +198,83 @@ func resetRootFlags() {
 	padding = 0
 	bgColor = ""
 	ico = false
+}
+
+func findPOSIXShell(t *testing.T) string {
+	t.Helper()
+
+	candidates := []string{
+		"sh",
+		"sh.exe",
+		`C:\Program Files\Git\usr\bin\sh.exe`,
+	}
+
+	for _, candidate := range candidates {
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path
+		}
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	t.Skip("POSIX shell not available")
+	return ""
+}
+
+func runInstallScriptForTest(t *testing.T, body string, extraEnv ...string) string {
+	t.Helper()
+
+	shellPath := findPOSIXShell(t)
+	scriptPath, err := filepath.Abs(filepath.Join("..", "install.sh"))
+	if err != nil {
+		t.Fatalf("resolve install.sh: %v", err)
+	}
+
+	command := `. "$1"` + "\n" + body
+	cmd := exec.Command(shellPath, "-c", command, "sh", scriptPath)
+	cmd.Env = append(os.Environ(), append([]string{
+		"ICONKIT_INSTALL_TEST_MODE=1",
+		"SHELL=/usr/bin/zsh",
+		"PATH=" + filepath.Dir(shellPath) + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}, extraEnv...)...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("install.sh command failed: %v\n%s", err, output)
+	}
+
+	return string(output)
+}
+
+func TestInstallScript_PostInstallMessageHintsRehashOnWindows(t *testing.T) {
+	output := runInstallScriptForTest(t, `LATEST=v0.0.2
+print_success_message "windows" "/usr/local/bin" "iconkit.exe"`)
+
+	if !strings.Contains(output, "rehash") {
+		t.Fatalf("expected Windows post-install message to mention rehash, got:\n%s", output)
+	}
+
+	if !strings.Contains(output, "/usr/local/bin/iconkit.exe") {
+		t.Fatalf("expected installed binary path in output, got:\n%s", output)
+	}
+}
+
+func TestInstallScript_CleanupCanRemoveTempDirFromInside(t *testing.T) {
+	baseDir := t.TempDir()
+	tmpDir := filepath.Join(baseDir, "tmp")
+	restoreDir := filepath.Join(baseDir, "restore")
+
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		t.Fatalf("mkdir tmp: %v", err)
+	}
+	if err := os.MkdirAll(restoreDir, 0o755); err != nil {
+		t.Fatalf("mkdir restore: %v", err)
+	}
+
+	runInstallScriptForTest(t, `TMPDIR="$TMPDIR_ARG"
+ORIG_PWD="$ORIG_PWD_ARG"
+cd "$TMPDIR"
+cleanup
+test ! -d "$TMPDIR"`, "TMPDIR_ARG="+tmpDir, "ORIG_PWD_ARG="+restoreDir)
 }
