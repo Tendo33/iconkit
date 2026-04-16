@@ -283,6 +283,10 @@ git push origin v2.1.0
 
 Releases are automated with GoReleaser and GitHub Actions.
 
+Before pushing a release tag, add a `GORELEASER_GITHUB_TOKEN` repository secret.
+Use a GitHub PAT that can write to both `Tendo33/iconkit` and `Tendo33/homebrew-tap`.
+If you use a fine-grained PAT, select both repositories and grant repository contents write access.
+
 ## License
 
 MIT
