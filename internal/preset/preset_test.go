@@ -25,20 +25,7 @@ func TestGet_iOS(t *testing.T) {
 	if !ok {
 		t.Fatal("ios preset should exist")
 	}
-	if len(p.Sizes) == 0 {
-		t.Error("ios preset should have sizes")
-	}
-	// Must include 1024 for App Store
-	found := false
-	for _, s := range p.Sizes {
-		if s == 1024 {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("ios preset must include 1024 for App Store")
-	}
+	assertContains(t, "ios", p.Sizes, 1024) // App Store
 }
 
 func TestGet_Android(t *testing.T) {
@@ -46,19 +33,36 @@ func TestGet_Android(t *testing.T) {
 	if !ok {
 		t.Fatal("android preset should exist")
 	}
-	if len(p.Sizes) == 0 {
-		t.Error("android preset should have sizes")
+	assertContains(t, "android", p.Sizes, 512) // Play Store
+}
+
+func TestGet_ChromeExt(t *testing.T) {
+	p, ok := Get("chrome-ext")
+	if !ok {
+		t.Fatal("chrome-ext preset should exist")
 	}
-	// Must include 512 for Play Store
-	found := false
-	for _, s := range p.Sizes {
-		if s == 512 {
-			found = true
-			break
-		}
+	for _, required := range []int{16, 32, 48, 128} {
+		assertContains(t, "chrome-ext", p.Sizes, required)
 	}
-	if !found {
-		t.Error("android preset must include 512 for Play Store")
+}
+
+func TestGet_FirefoxExt(t *testing.T) {
+	p, ok := Get("firefox-ext")
+	if !ok {
+		t.Fatal("firefox-ext preset should exist")
+	}
+	for _, required := range []int{32, 48, 64, 96, 128} {
+		assertContains(t, "firefox-ext", p.Sizes, required)
+	}
+}
+
+func TestGet_PWA(t *testing.T) {
+	p, ok := Get("pwa")
+	if !ok {
+		t.Fatal("pwa preset should exist")
+	}
+	for _, required := range []int{192, 512} {
+		assertContains(t, "pwa", p.Sizes, required)
 	}
 }
 
@@ -71,11 +75,14 @@ func TestGet_Unknown(t *testing.T) {
 
 func TestNames(t *testing.T) {
 	names := Names()
-	if len(names) < 3 {
-		t.Errorf("expected at least 3 presets, got %d", len(names))
+	if len(names) < 6 {
+		t.Errorf("expected at least 6 presets, got %d", len(names))
 	}
 
-	expected := map[string]bool{"web": false, "ios": false, "android": false}
+	expected := map[string]bool{
+		"web": false, "ios": false, "android": false,
+		"chrome-ext": false, "firefox-ext": false, "pwa": false,
+	}
 	for _, n := range names {
 		expected[n] = true
 	}
@@ -108,4 +115,14 @@ func TestAllPresets_SizesPositive(t *testing.T) {
 			t.Errorf("preset %q has no description", name)
 		}
 	}
+}
+
+func assertContains(t *testing.T, name string, sizes []int, target int) {
+	t.Helper()
+	for _, s := range sizes {
+		if s == target {
+			return
+		}
+	}
+	t.Errorf("%s preset must include %d", name, target)
 }

@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -52,4 +55,146 @@ func TestParseSizes_Invalid(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildOptions_UsesExtendedConfigDefaults(t *testing.T) {
+	tempDir := t.TempDir()
+	configJSON := `{
+		"pad": 0.1,
+		"bg": "#112233",
+		"ico": true
+	}`
+	if err := os.WriteFile(filepath.Join(tempDir, "iconkit.json"), []byte(configJSON), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWD)
+		resetRootFlags()
+	})
+
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	resetRootFlags()
+
+	opts, err := buildOptions("icon.png")
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+
+	if opts.Padding != 0.1 {
+		t.Fatalf("padding = %v, want 0.1", opts.Padding)
+	}
+	if !opts.Ico {
+		t.Fatal("ico = false, want true")
+	}
+	if opts.BgColor == nil {
+		t.Fatal("bgColor = nil, want parsed color")
+	}
+
+	r, g, b, a := opts.BgColor.RGBA()
+	if r>>8 != 0x11 || g>>8 != 0x22 || b>>8 != 0x33 || a>>8 != 0xff {
+		t.Fatalf("bgColor = %#02x %#02x %#02x %#02x, want 11 22 33 ff", r>>8, g>>8, b>>8, a>>8)
+	}
+}
+
+func TestBuildOptions_UsesConfigInputWhenArgMissing(t *testing.T) {
+	tempDir := t.TempDir()
+	configJSON := `{
+		"input": "icon.png"
+	}`
+	if err := os.WriteFile(filepath.Join(tempDir, "iconkit.json"), []byte(configJSON), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWD)
+		resetRootFlags()
+	})
+
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	resetRootFlags()
+
+	opts, err := buildOptions("")
+	if err != nil {
+		t.Fatalf("buildOptions: %v", err)
+	}
+	if opts.Input != "icon.png" {
+		t.Fatalf("input = %q, want %q", opts.Input, "icon.png")
+	}
+}
+
+func TestRootCmd_AllowsOptionalInputArgForConfigInput(t *testing.T) {
+	if err := rootCmd.Args(rootCmd, []string{}); err != nil {
+		t.Fatalf("expected zero args to be allowed, got %v", err)
+	}
+}
+
+func TestRootCmd_HelpTextHasNoMojibake(t *testing.T) {
+	checks := []string{
+		rootCmd.Short,
+		rootCmd.Flag("pad").Usage,
+		rootCmd.Flag("ico").Usage,
+	}
+
+	for _, text := range checks {
+		if strings.Contains(text, "鈥") || strings.Contains(text, "鈮") || strings.Contains(text, "�") {
+			t.Fatalf("unexpected mojibake in help text: %q", text)
+		}
+	}
+
+	if got := rootCmd.Flag("pad").Usage; got != "padding ratio around icon (0.0-0.5, e.g. 0.1 = 10%)" {
+		t.Fatalf("pad usage = %q", got)
+	}
+	if got := rootCmd.Flag("ico").Usage; got != "also generate favicon.ico (sizes <= 256)" {
+		t.Fatalf("ico usage = %q", got)
+	}
+}
+
+func TestBuildOptions_RejectsPaddingOutOfRange(t *testing.T) {
+	resetRootFlags()
+	t.Cleanup(resetRootFlags)
+
+	padding = 0.5
+	_, err := buildOptions("icon.png")
+	if err == nil {
+		t.Fatal("expected error for padding = 0.5")
+	}
+
+	padding = -0.1
+	_, err = buildOptions("icon.png")
+	if err == nil {
+		t.Fatal("expected error for negative padding")
+	}
+
+	padding = 0.6
+	_, err = buildOptions("icon.png")
+	if err == nil {
+		t.Fatal("expected error for padding = 0.6")
+	}
+}
+
+func resetRootFlags() {
+	sizes = ""
+	radius = 0
+	presetName = ""
+	outDir = ""
+	force = false
+	configFile = ""
+	padding = 0
+	bgColor = ""
+	ico = false
 }

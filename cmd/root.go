@@ -6,10 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/Tendo33/iconkit/internal/config"
 	"github.com/Tendo33/iconkit/internal/preset"
+	"github.com/Tendo33/iconkit/internal/processor"
 	"github.com/Tendo33/iconkit/internal/runner"
+	"github.com/spf13/cobra"
 )
 
 var version = "dev"
@@ -21,38 +22,45 @@ var (
 	outDir     string
 	force      bool
 	configFile string
+	padding    float64
+	bgColor    string
+	ico        bool
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "iconkit <input>",
-	Short: "Icon processing CLI — resize & round corners in one command",
+	Use:   "iconkit [input]",
+	Short: "Icon processing CLI - resize and round corners in one command",
 	Long: `iconkit is a developer-friendly CLI tool for icon processing.
 
 It takes a single image (or a directory of images) and outputs multiple sizes
-with optional rounded corners.
+with optional rounded corners, padding, background color, and favicon.ico.
 
 Examples:
   iconkit icon.png
   iconkit icon.png -s 16,32,64,128
   iconkit icon.png -r 20 -s 16,32,64,128
   iconkit icon.png -p web
-  iconkit icon.png -p ios
-  iconkit icon.png -p android
-  iconkit ./assets/ -p web
-  iconkit icon.png -c iconkit.json
+  iconkit icon.png -p chrome-ext
+  iconkit icon.png -p firefox-ext
+  iconkit icon.png --ico -p web
+  iconkit icon.png --pad 0.1 --bg "#ffffff"
+  iconkit -c iconkit.json
   iconkit icon.png -r 24 -s 16,32,64 -o ./dist`,
 	Version: version,
-	Args:    cobra.ExactArgs(1),
+	Args:    cobra.MaximumNArgs(1),
 	RunE:    run,
 }
 
 func init() {
 	rootCmd.Flags().StringVarP(&sizes, "sizes", "s", "", "output sizes, comma-separated (e.g. 16,32,64)")
 	rootCmd.Flags().IntVarP(&radius, "radius", "r", 0, "corner radius in pixels")
-	rootCmd.Flags().StringVarP(&presetName, "preset", "p", "", "size preset (web, ios, android)")
+	rootCmd.Flags().StringVarP(&presetName, "preset", "p", "", "size preset (web, ios, android, chrome-ext, firefox-ext, pwa)")
 	rootCmd.Flags().StringVarP(&outDir, "out", "o", "", "output directory (default: ./icons)")
 	rootCmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing files")
 	rootCmd.Flags().StringVarP(&configFile, "config", "c", "", "config file path (default: auto-detect iconkit.json)")
+	rootCmd.Flags().Float64Var(&padding, "pad", 0, "padding ratio around icon (0.0-0.5, e.g. 0.1 = 10%)")
+	rootCmd.Flags().StringVar(&bgColor, "bg", "", "background color in hex (e.g. \"#ffffff\", \"ff0000\")")
+	rootCmd.Flags().BoolVar(&ico, "ico", false, "also generate favicon.ico (sizes <= 256)")
 }
 
 func Execute() error {
@@ -60,7 +68,10 @@ func Execute() error {
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	inputPath := args[0]
+	inputPath := ""
+	if len(args) > 0 {
+		inputPath = args[0]
+	}
 
 	opts, err := buildOptions(inputPath)
 	if err != nil {
@@ -72,16 +83,18 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("\nDone! %d icons saved to %s\n", len(results), opts.Out)
+	fmt.Printf("\nDone! %d files saved to %s\n", len(results), opts.Out)
 	return nil
 }
 
 func buildOptions(inputPath string) (runner.Options, error) {
 	opts := runner.Options{
-		Input:  inputPath,
-		Radius: radius,
-		Out:    "./icons",
-		Force:  force,
+		Input:   inputPath,
+		Radius:  radius,
+		Out:     "./icons",
+		Force:   force,
+		Padding: padding,
+		Ico:     ico,
 	}
 
 	// Load config file (explicit or auto-detect)
@@ -98,6 +111,9 @@ func buildOptions(inputPath string) (runner.Options, error) {
 
 	// Apply config as defaults (CLI flags override)
 	if cfg != nil {
+		if cfg.Input != "" && opts.Input == "" {
+			opts.Input = cfg.Input
+		}
 		if cfg.Radius > 0 && radius == 0 {
 			opts.Radius = cfg.Radius
 		}
@@ -106,6 +122,15 @@ func buildOptions(inputPath string) (runner.Options, error) {
 		}
 		if cfg.Force && !force {
 			opts.Force = cfg.Force
+		}
+		if cfg.Padding > 0 && padding == 0 {
+			opts.Padding = cfg.Padding
+		}
+		if cfg.Bg != "" && bgColor == "" {
+			bgColor = cfg.Bg
+		}
+		if cfg.Ico && !ico {
+			opts.Ico = cfg.Ico
 		}
 		if cfg.Preset != "" && presetName == "" {
 			presetName = cfg.Preset
@@ -118,6 +143,21 @@ func buildOptions(inputPath string) (runner.Options, error) {
 	// CLI flag overrides
 	if outDir != "" {
 		opts.Out = outDir
+	}
+	if opts.Input == "" {
+		return opts, fmt.Errorf("input path is required (pass [input] or set \"input\" in iconkit.json)")
+	}
+
+	if opts.Padding < 0 || opts.Padding >= 0.5 {
+		return opts, fmt.Errorf("--pad must be between 0.0 and 0.5 (exclusive), got %v", opts.Padding)
+	}
+
+	if bgColor != "" {
+		c, err := processor.ParseHexColor(bgColor)
+		if err != nil {
+			return opts, err
+		}
+		opts.BgColor = c
 	}
 
 	// Resolve sizes: preset > -s > config sizes > default

@@ -52,8 +52,9 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/Tendo33/iconkit"
-    description: "Developer-friendly CLI tool for icon processing — resize & round corners in one command"
+    description: "Developer-friendly CLI tool for icon processing - resize and round corners in one command"
     license: "MIT"
+    skip_upload: true
     install: |
       bin.install "iconkit"
     test: |

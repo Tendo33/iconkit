@@ -3,6 +3,7 @@ package runner
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"os"
@@ -17,12 +18,15 @@ import (
 )
 
 type Options struct {
-	Input  string
-	Sizes  []int
-	Radius int
-	Preset string
-	Out    string
-	Force  bool
+	Input   string
+	Sizes   []int
+	Radius  int
+	Preset  string
+	Out     string
+	Force   bool
+	Padding float64
+	BgColor color.Color // nil = transparent
+	Ico     bool        // generate favicon.ico
 }
 
 var DefaultSizes = []int{16, 32, 64, 128}
@@ -32,8 +36,6 @@ type Result struct {
 	Size int
 }
 
-// Run executes the icon processing pipeline.
-// writer receives progress messages; pass nil to suppress output.
 func Run(opts Options, w io.Writer) ([]Result, error) {
 	if w == nil {
 		w = io.Discard
@@ -128,6 +130,11 @@ func processOne(inputPath string, sizes []int, opts Options, w io.Writer) ([]Res
 		return nil, err
 	}
 
+	// Apply padding first (before resize, on the source image)
+	if opts.Padding > 0 {
+		img = processor.Pad(img, opts.Padding, opts.BgColor)
+	}
+
 	originalSize := img.Bounds().Dx()
 	baseName := fileBaseName(inputPath)
 	multiFile := false
@@ -136,6 +143,8 @@ func processOne(inputPath string, sizes []int, opts Options, w io.Writer) ([]Res
 	}
 
 	var results []Result
+	var icoImages []image.Image
+
 	for _, size := range sizes {
 		resized := processor.Resize(img, size)
 
@@ -143,6 +152,15 @@ func processOne(inputPath string, sizes []int, opts Options, w io.Writer) ([]Res
 		if opts.Radius > 0 {
 			scaledR := processor.ScaleRadius(opts.Radius, originalSize, size)
 			output = processor.RoundCorners(resized, scaledR)
+		}
+
+		if opts.BgColor != nil {
+			output = processor.FillBackground(output, opts.BgColor)
+		}
+
+		// Collect for ICO (only sizes <= 256)
+		if opts.Ico && size <= 256 {
+			icoImages = append(icoImages, output)
 		}
 
 		var filename string
@@ -165,6 +183,28 @@ func processOne(inputPath string, sizes []int, opts Options, w io.Writer) ([]Res
 
 		fmt.Fprintf(w, "  ✓ %s (%dx%d)\n", outPath, size, size)
 		results = append(results, Result{Path: outPath, Size: size})
+	}
+
+	// Generate favicon.ico
+	if opts.Ico && len(icoImages) > 0 {
+		icoName := "favicon.ico"
+		if multiFile {
+			icoName = fmt.Sprintf("%s.ico", baseName)
+		}
+		icoPath := filepath.Join(opts.Out, icoName)
+
+		if !opts.Force {
+			if _, err := os.Stat(icoPath); err == nil {
+				return results, fmt.Errorf("file already exists: %s (use -f to overwrite)", icoPath)
+			}
+		}
+
+		if err := saveICO(icoImages, icoPath); err != nil {
+			return results, fmt.Errorf("failed to save %s: %w", icoPath, err)
+		}
+
+		fmt.Fprintf(w, "  ✓ %s (favicon, %d sizes)\n", icoPath, len(icoImages))
+		results = append(results, Result{Path: icoPath, Size: 0})
 	}
 
 	return results, nil
@@ -191,6 +231,15 @@ func savePNG(img image.Image, path string) error {
 	}
 	defer f.Close()
 	return png.Encode(f, img)
+}
+
+func saveICO(images []image.Image, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return processor.EncodeICO(f, images)
 }
 
 func fileBaseName(path string) string {

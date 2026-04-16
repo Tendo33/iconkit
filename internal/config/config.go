@@ -10,12 +10,15 @@ import (
 const DefaultFileName = "iconkit.json"
 
 type Config struct {
-	Input  string `json:"input,omitempty"`
-	Sizes  []int  `json:"sizes,omitempty"`
-	Radius int    `json:"radius,omitempty"`
-	Preset string `json:"preset,omitempty"`
-	Out    string `json:"out,omitempty"`
-	Force  bool   `json:"force,omitempty"`
+	Input   string  `json:"input,omitempty"`
+	Sizes   []int   `json:"sizes,omitempty"`
+	Radius  int     `json:"radius,omitempty"`
+	Preset  string  `json:"preset,omitempty"`
+	Out     string  `json:"out,omitempty"`
+	Force   bool    `json:"force,omitempty"`
+	Padding float64 `json:"pad,omitempty"`
+	Bg      string  `json:"bg,omitempty"`
+	Ico     bool    `json:"ico,omitempty"`
 }
 
 // Load reads an iconkit.json config from the given directory.

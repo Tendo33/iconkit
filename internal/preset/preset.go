@@ -20,6 +20,18 @@ var Registry = map[string]Preset{
 		Sizes:       []int{36, 48, 72, 96, 144, 192, 512},
 		Description: "Android mipmap (mdpi → xxxhdpi + Play Store)",
 	},
+	"chrome-ext": {
+		Sizes:       []int{16, 32, 48, 128},
+		Description: "Chrome Extension (Manifest V3)",
+	},
+	"firefox-ext": {
+		Sizes:       []int{32, 48, 64, 96, 128},
+		Description: "Firefox Add-on",
+	},
+	"pwa": {
+		Sizes:       []int{192, 512},
+		Description: "Progressive Web App (minimum required)",
+	},
 }
 
 func Get(name string) (Preset, bool) {

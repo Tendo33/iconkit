@@ -25,7 +25,10 @@ func TestLoad_ValidJSON(t *testing.T) {
 		"radius": 20,
 		"preset": "web",
 		"out": "./dist",
-		"force": true
+		"force": true,
+		"pad": 0.1,
+		"bg": "#112233",
+		"ico": true
 	}`
 	os.WriteFile(filepath.Join(dir, DefaultFileName), []byte(data), 0o644)
 
@@ -53,6 +56,15 @@ func TestLoad_ValidJSON(t *testing.T) {
 	}
 	if !cfg.Force {
 		t.Error("force should be true")
+	}
+	if cfg.Padding != 0.1 {
+		t.Errorf("padding = %v, want 0.1", cfg.Padding)
+	}
+	if cfg.Bg != "#112233" {
+		t.Errorf("bg = %q, want %q", cfg.Bg, "#112233")
+	}
+	if !cfg.Ico {
+		t.Error("ico should be true")
 	}
 }
 

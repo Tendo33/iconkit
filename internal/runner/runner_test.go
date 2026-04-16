@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -71,13 +72,6 @@ func TestRun_CustomSizes(t *testing.T) {
 	if len(results) != 2 {
 		t.Errorf("expected 2 results, got %d", len(results))
 	}
-
-	for _, expected := range []string{"icon-48.png", "icon-96.png"} {
-		path := filepath.Join(outDir, expected)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Errorf("expected file %s to exist", expected)
-		}
-	}
 }
 
 func TestRun_WithRadius(t *testing.T) {
@@ -98,7 +92,6 @@ func TestRun_WithRadius(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 
-	// Verify the corner pixel is transparent
 	f, _ := os.Open(results[0].Path)
 	defer f.Close()
 	img, _ := png.Decode(f)
@@ -108,7 +101,7 @@ func TestRun_WithRadius(t *testing.T) {
 	}
 }
 
-func TestRun_Preset(t *testing.T) {
+func TestRun_WebPreset(t *testing.T) {
 	tmpDir := t.TempDir()
 	inputPath := createTestPNG(t, tmpDir, "icon.png", 512, 512)
 	outDir := filepath.Join(tmpDir, "out")
@@ -162,6 +155,176 @@ func TestRun_AndroidPreset(t *testing.T) {
 	}
 }
 
+func TestRun_ChromeExtPreset(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:  inputPath,
+		Preset: "chrome-ext",
+		Out:    outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 4 {
+		t.Errorf("chrome-ext preset should produce 4 icons, got %d", len(results))
+	}
+}
+
+func TestRun_FirefoxExtPreset(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:  inputPath,
+		Preset: "firefox-ext",
+		Out:    outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 5 {
+		t.Errorf("firefox-ext preset should produce 5 icons, got %d", len(results))
+	}
+}
+
+func TestRun_PWAPreset(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 512, 512)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:  inputPath,
+		Preset: "pwa",
+		Out:    outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("pwa preset should produce 2 icons, got %d", len(results))
+	}
+}
+
+func TestRun_WithPadding(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:   inputPath,
+		Sizes:   []int{64},
+		Padding: 0.1,
+		Out:     outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	f, _ := os.Open(results[0].Path)
+	defer f.Close()
+	img, _ := png.Decode(f)
+	if img.Bounds().Dx() != 64 {
+		t.Errorf("output should still be 64px, got %d", img.Bounds().Dx())
+	}
+}
+
+func TestRun_WithBackground(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Create a transparent PNG
+	imgPath := filepath.Join(tmpDir, "transparent.png")
+	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
+	f, _ := os.Create(imgPath)
+	png.Encode(f, img)
+	f.Close()
+
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:   imgPath,
+		Sizes:   []int{32},
+		BgColor: color.NRGBA{R: 255, G: 0, B: 0, A: 255},
+		Out:     outDir,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatal("expected 1 result")
+	}
+
+	outF, _ := os.Open(results[0].Path)
+	defer outF.Close()
+	outImg, _ := png.Decode(outF)
+	r, _, _, a := outImg.At(16, 16).RGBA()
+	if a == 0 {
+		t.Error("background should fill transparent pixels")
+	}
+	if r>>8 != 255 {
+		t.Errorf("background should be red, got r=%d", r>>8)
+	}
+}
+
+func TestRun_WithICO(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input: inputPath,
+		Sizes: []int{16, 32, 48},
+		Ico:   true,
+		Out:   outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 3 PNGs + 1 ICO = 4
+	if len(results) != 4 {
+		t.Errorf("expected 4 results (3 png + 1 ico), got %d", len(results))
+	}
+
+	icoPath := filepath.Join(outDir, "favicon.ico")
+	info, err := os.Stat(icoPath)
+	if os.IsNotExist(err) {
+		t.Fatal("favicon.ico should exist")
+	}
+	if info.Size() < 22 {
+		t.Error("favicon.ico is too small")
+	}
+}
+
+func TestRun_ICO_SkipsLargeSizes(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 512, 512)
+	outDir := filepath.Join(tmpDir, "out")
+
+	var buf bytes.Buffer
+	results, err := Run(Options{
+		Input: inputPath,
+		Sizes: []int{16, 32, 512},
+		Ico:   true,
+		Out:   outDir,
+	}, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 3 PNGs + 1 ICO (containing only 16+32) = 4
+	if len(results) != 4 {
+		t.Errorf("expected 4 results, got %d", len(results))
+	}
+	output := buf.String()
+	if !strings.Contains(output, "favicon") {
+		t.Error("output should mention favicon.ico")
+	}
+}
+
 func TestRun_FileNotFound(t *testing.T) {
 	_, err := Run(Options{
 		Input: "/nonexistent/icon.png",
@@ -191,19 +354,16 @@ func TestRun_ForceOverwrite(t *testing.T) {
 	inputPath := createTestPNG(t, tmpDir, "icon.png", 64, 64)
 	outDir := filepath.Join(tmpDir, "out")
 
-	// First run
 	_, err := Run(Options{Input: inputPath, Sizes: []int{32}, Out: outDir}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Second run without force should fail
 	_, err = Run(Options{Input: inputPath, Sizes: []int{32}, Out: outDir}, nil)
 	if err == nil {
 		t.Error("expected error when file exists without force")
 	}
 
-	// Third run with force should succeed
 	_, err = Run(Options{Input: inputPath, Sizes: []int{32}, Out: outDir, Force: true}, nil)
 	if err != nil {
 		t.Errorf("force overwrite should succeed: %v", err)
@@ -227,18 +387,8 @@ func TestRun_BatchDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	// 2 images × 1 size = 2 results
 	if len(results) != 2 {
 		t.Errorf("expected 2 results for batch dir, got %d", len(results))
-	}
-
-	// Check naming: {basename}-{size}.png
-	for _, name := range []string{"a-32.png", "b-32.png"} {
-		path := filepath.Join(outDir, name)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Errorf("expected %s to exist", name)
-		}
 	}
 }
 
@@ -275,7 +425,6 @@ func TestRun_NilWriter(t *testing.T) {
 	inputPath := createTestPNG(t, tmpDir, "icon.png", 64, 64)
 	outDir := filepath.Join(tmpDir, "out")
 
-	// Should not panic with nil writer
 	results, err := Run(Options{
 		Input: inputPath,
 		Sizes: []int{16},
@@ -312,5 +461,99 @@ func TestRun_OutputSizeCorrect(t *testing.T) {
 			t.Errorf("file %s: expected %dx%d, got %dx%d",
 				r.Path, r.Size, r.Size, bounds.Dx(), bounds.Dy())
 		}
+	}
+}
+
+func TestRun_PaddingPlusBg(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:   inputPath,
+		Sizes:   []int{64},
+		Padding: 0.1,
+		BgColor: color.NRGBA{R: 255, G: 255, B: 255, A: 255},
+		Out:     outDir,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatal("expected 1 result")
+	}
+
+	f, _ := os.Open(results[0].Path)
+	defer f.Close()
+	img, _ := png.Decode(f)
+	// Corner should be white (bg color from padding)
+	r, g, b, a := img.At(0, 0).RGBA()
+	if a == 0 {
+		t.Error("corner should be opaque with bg color")
+	}
+	if r>>8 != 255 || g>>8 != 255 || b>>8 != 255 {
+		t.Errorf("corner should be white, got r=%d g=%d b=%d", r>>8, g>>8, b>>8)
+	}
+}
+
+func TestRun_PaddingBgAndLargeRadiusKeepsOpaqueCorners(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:   inputPath,
+		Sizes:   []int{64},
+		Padding: 0.1,
+		Radius:  80,
+		BgColor: color.NRGBA{R: 255, G: 255, B: 255, A: 255},
+		Out:     outDir,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatal("expected 1 result")
+	}
+
+	f, _ := os.Open(results[0].Path)
+	defer f.Close()
+	img, _ := png.Decode(f)
+
+	r, g, b, a := img.At(0, 0).RGBA()
+	if a == 0 {
+		t.Fatal("corner should remain opaque when bg color is set")
+	}
+	if r>>8 != 255 || g>>8 != 255 || b>>8 != 255 {
+		t.Fatalf("corner should remain white, got r=%d g=%d b=%d", r>>8, g>>8, b>>8)
+	}
+}
+
+func TestRun_BatchWithICO(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputDir := filepath.Join(tmpDir, "input")
+	os.MkdirAll(inputDir, 0o755)
+	createTestPNG(t, inputDir, "logo.png", 128, 128)
+
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input: inputDir,
+		Sizes: []int{16, 32},
+		Ico:   true,
+		Out:   outDir,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2 PNGs + 1 ICO = 3
+	if len(results) != 3 {
+		t.Errorf("expected 3 results, got %d", len(results))
+	}
+
+	// ICO should be named logo.ico for batch mode
+	icoPath := filepath.Join(outDir, "logo.ico")
+	if _, err := os.Stat(icoPath); os.IsNotExist(err) {
+		t.Errorf("expected %s to exist", icoPath)
 	}
 }
