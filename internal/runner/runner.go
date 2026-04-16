@@ -12,8 +12,8 @@ import (
 	_ "image/jpeg"
 
 	"github.com/disintegration/imaging"
-	"github.com/tudou/iconkit/internal/preset"
-	"github.com/tudou/iconkit/internal/processor"
+	"github.com/Tendo33/iconkit/internal/preset"
+	"github.com/Tendo33/iconkit/internal/processor"
 )
 
 type Options struct {

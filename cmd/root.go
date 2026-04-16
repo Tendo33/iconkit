@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tudou/iconkit/internal/config"
-	"github.com/tudou/iconkit/internal/preset"
-	"github.com/tudou/iconkit/internal/runner"
+	"github.com/Tendo33/iconkit/internal/config"
+	"github.com/Tendo33/iconkit/internal/preset"
+	"github.com/Tendo33/iconkit/internal/runner"
 )
 
 var version = "dev"
@@ -98,9 +98,6 @@ func buildOptions(inputPath string) (runner.Options, error) {
 
 	// Apply config as defaults (CLI flags override)
 	if cfg != nil {
-		if cfg.Input != "" && inputPath == "" {
-			opts.Input = cfg.Input
-		}
 		if cfg.Radius > 0 && radius == 0 {
 			opts.Radius = cfg.Radius
 		}

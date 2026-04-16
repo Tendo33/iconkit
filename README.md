@@ -4,6 +4,12 @@ A developer-friendly CLI tool for icon processing. Resize and round corners in o
 
 ## Install
 
+### One-liner (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Tendo33/iconkit/main/install.sh | sh
+```
+
 ### Homebrew (macOS / Linux)
 
 ```bash

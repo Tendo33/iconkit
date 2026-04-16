@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/tudou/iconkit/cmd"
+	"github.com/Tendo33/iconkit/cmd"
 )
 
 func main() {

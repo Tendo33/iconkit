@@ -1,4 +1,4 @@
-module github.com/tudou/iconkit
+module github.com/Tendo33/iconkit
 
 go 1.26.2
 
