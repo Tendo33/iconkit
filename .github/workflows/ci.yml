@@ -27,6 +27,65 @@ jobs:
       - name: Build
         run: go build -o iconkit .
 
+      - name: Verify install.sh helpers on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICONKIT_INSTALL_TEST_MODE=1 . ./install.sh
+
+          command -v choose_default_install_dir >/dev/null 2>&1
+          command -v install_binary >/dev/null 2>&1
+
+          choose_default_install_dir "$(get_os)" >/dev/null
+          test "$RESOLVED_INSTALL_DIR" = "/usr/local/bin"
+
+          tmp_root="$(mktemp -d)"
+          readonly_dir="$tmp_root/readonly-bin"
+          mkdir -p "$readonly_dir"
+          chmod 555 "$readonly_dir"
+          DEFAULT_INSTALL_DIR="$readonly_dir"
+          INSTALL_DIR_FALLBACK_REASON=""
+          choose_default_install_dir "$(get_os)" >/dev/null
+          test "$RESOLVED_INSTALL_DIR" = "$HOME/.local/bin"
+          test -n "$INSTALL_DIR_FALLBACK_REASON"
+
+          INSTALL_DIR="$tmp_root/custom-bin"
+          resolve_install_dir "$(get_os)"
+          test "$RESOLVED_INSTALL_DIR" = "$tmp_root/custom-bin"
+          test "$INSTALL_DIR_SOURCE" = "explicit"
+
+      - name: Verify install.sh helpers on Windows Git Bash
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-Location $env:GITHUB_WORKSPACE
+          @'
+          set -eu
+          PATH="/usr/bin:/mingw64/bin:$PATH"
+          ICONKIT_INSTALL_TEST_MODE=1 . ./install.sh
+
+          command -v choose_default_install_dir >/dev/null 2>&1
+          command -v install_binary >/dev/null 2>&1
+
+          choose_default_install_dir windows >/dev/null
+          test "$RESOLVED_INSTALL_DIR" = "$HOME/bin"
+
+          tmp_root="$(mktemp -d)"
+          marker="$tmp_root/sudo-called"
+          printf '%s\n' '#!/bin/sh' 'touch "$ICONKIT_TEST_SUDO_MARKER"' 'exit 99' > "$tmp_root/sudo"
+          chmod +x "$tmp_root/sudo"
+          PATH="$tmp_root:$PATH"
+          ICONKIT_TEST_SUDO_MARKER="$marker"
+
+          touch "$tmp_root/iconkit.exe"
+          if (install_binary "$tmp_root/iconkit.exe" /proc/iconkit-bin windows >/dev/null 2>&1); then
+            echo "expected install_binary to fail on unwritable Windows dir"
+            exit 1
+          fi
+          test ! -f "$marker"
+          '@ | & 'C:\Program Files\Git\usr\bin\sh.exe' -s
+
       - name: Test
         run: go test ./... -v -race -count=1
 

@@ -49,11 +49,18 @@
 
 ## 安装
 
-### 一行命令安装（macOS / Linux）
+### 一行命令安装（macOS / Linux / Windows Git Bash）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Tendo33/iconkit/main/install.sh | sh
 ```
+
+安装脚本会按平台选择合适的默认目录：
+
+- Windows Git Bash 默认安装到 `~/bin`
+- macOS / Linux 会优先尝试 `/usr/local/bin`，如果系统目录不可写则自动回退到 `~/.local/bin`
+
+如果选择的用户级目录还没有加入 `PATH`，请先把它加入环境变量再打开新 shell。若安装后当前 shell 里仍提示找不到 `iconkit`，请执行 `hash -r`，或直接重启 shell。
 
 ### Homebrew（仅 macOS）
 
@@ -73,7 +80,7 @@ xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/iconkit/latest/iconkit
 go install github.com/Tendo33/iconkit@latest
 ```
 
-Linux 用户请使用一键安装脚本、`go install`，或从 Releases 下载二进制文件。
+Linux 和 Windows Git Bash 用户请使用一键安装脚本、`go install`，或从 Releases 下载二进制文件。
 
 ### 二进制下载
 

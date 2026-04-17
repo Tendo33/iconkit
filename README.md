@@ -49,11 +49,18 @@
 
 ## Install
 
-### One-liner (macOS / Linux)
+### One-liner (macOS / Linux / Windows Git Bash)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Tendo33/iconkit/main/install.sh | sh
 ```
+
+The installer chooses a sensible default per platform:
+
+- Windows Git Bash installs to `~/bin`
+- macOS / Linux try `/usr/local/bin` first and fall back to `~/.local/bin` when the system directory is not writable
+
+If the chosen user bin directory is not already on your `PATH`, add it before opening a new shell. If `iconkit` is still not found in the current shell after installation, run `hash -r` or restart the shell.
 
 ### Homebrew (macOS)
 
@@ -73,7 +80,7 @@ xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/iconkit/latest/iconkit
 go install github.com/Tendo33/iconkit@latest
 ```
 
-For Linux, use the one-liner installer, `go install`, or download a binary from Releases.
+For Linux and Windows Git Bash, use the one-liner installer, `go install`, or download a binary from Releases.
 
 ### Binary download
 
