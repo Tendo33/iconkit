@@ -24,12 +24,14 @@
 
 ## Highlights
 
-- Generate multiple icon sizes from a single PNG or JPG input
-- Round corners with proportional scaling across output sizes
+- Generate multiple icon sizes from a single PNG, JPG, WebP, or SVG input
+- Anti-aliased round corners with proportional scaling across output sizes
 - Add padding for safe zones and maskable icon layouts
 - Fill transparent areas with a solid background color
 - Export a multi-size `favicon.ico` alongside PNG outputs
-- Batch process every image in a directory
+- Batch process every image in a directory with parallel workers
+- Generate `manifest.json` and HTML `<link>` tags automatically
+- Non-square input support: letterbox (`fit`) and center-crop (`cover`) modes
 
 ## Table of Contents
 
@@ -40,7 +42,9 @@
 - [Presets](#presets)
 - [favicon.ico](#faviconico)
 - [Padding and Background](#padding-and-background)
+- [Maskable Icons](#maskable-icons)
 - [JSON Config](#json-config)
+- [JSON Schema](#json-schema)
 - [Batch Processing](#batch-processing)
 - [Output](#output)
 - [Development](#development)
@@ -98,11 +102,29 @@ iconkit icon.png -p web --ico
 # Rounded corners, keeping the original size
 iconkit icon.png -r 20
 
+# Rounded corners as a percentage (works across all output sizes)
+iconkit icon.png --radius-percent 25 -p ios
+
 # Rounded corners with a custom output directory
 iconkit icon.png -r 20 -o ./dist
 
 # Add padding and a white background
 iconkit icon.png --pad 0.1 --bg "#ffffff"
+
+# Letterbox a non-square image to 512x512 with a dark background
+iconkit icon.png --resize-mode fit --bg "#1a1a2e" -s 512
+
+# Generate icons + HTML link tags + Web App Manifest
+iconkit icon.png -p pwa --html --manifest
+
+# Android maskable icon (18% safe-zone padding + manifest)
+iconkit icon.png -p android --maskable --manifest
+
+# Preview without writing files
+iconkit icon.png -p ios --dry-run
+
+# Parallel batch processing
+iconkit ./assets/ -p web -j 4
 ```
 
 ## Usage
@@ -111,7 +133,7 @@ iconkit icon.png --pad 0.1 --bg "#ffffff"
 iconkit [input] [options]
 ```
 
-`<input>` can be a single `.png`, `.jpg`, `.jpeg`, or a directory containing images.
+`<input>` can be a single `.png`, `.jpg`, `.jpeg`, `.webp`, `.svg`, or a directory containing images.
 
 ### Examples
 
@@ -121,6 +143,9 @@ iconkit icon.png
 
 # Radius only: keeps the original size and outputs a single PNG
 iconkit icon.png -r 20
+
+# Radius as percentage: consistent look across all sizes
+iconkit icon.png --radius-percent 25 -p ios
 
 # Padding only: keeps the original size and outputs a single PNG
 iconkit icon.png --pad 0.1
@@ -146,6 +171,18 @@ iconkit icon.png -p ios
 # Android mipmap icons
 iconkit icon.png -p android
 
+# macOS App Icon sizes
+iconkit icon.png -p macos
+
+# Windows shell icons
+iconkit icon.png -p windows
+
+# Electron cross-platform icons
+iconkit icon.png -p electron
+
+# Tauri v2 icons (use --output-name for correct filenames)
+iconkit icon.png -p tauri --output-name "{width}x{height}"
+
 # PWA icons
 iconkit icon.png -p pwa
 
@@ -158,14 +195,35 @@ iconkit icon.png --pad 0.1 --bg "#ffffff"
 # Fill transparent areas with a custom color
 iconkit icon.png --bg "#1a1a2e" -p chrome-ext
 
+# Non-square input: letterbox to 512x512 with dark background
+iconkit banner.png --resize-mode fit --bg "#1a1a2e" -s 512
+
+# Non-square input: center-crop to 512x512
+iconkit banner.png --resize-mode cover -s 512
+
 # Batch process all images in a directory
 iconkit ./assets/ -p web
+
+# Batch process with 4 parallel workers
+iconkit ./assets/ -p web -j 4
 
 # Custom output directory, force overwrite
 iconkit icon.png -s 16,32 -o ./dist -f
 
 # Use a JSON config file
 iconkit icon.png -c iconkit.json
+
+# Generate Web App Manifest and HTML link tags
+iconkit icon.png -p pwa --manifest --html
+
+# Android maskable icon with manifest
+iconkit icon.png -p android --maskable --manifest
+
+# Preview what would be generated (no files written)
+iconkit icon.png -p ios --dry-run
+
+# Quiet mode — only print the final summary
+iconkit icon.png -p web --quiet
 ```
 
 ## Options
@@ -174,13 +232,26 @@ iconkit icon.png -c iconkit.json
 |------|-------|-------------|---------|
 | `--sizes` | `-s` | Output sizes, comma-separated | auto (`16,32,64,128`; with `-r` / `--pad` / `--bg` only, keep original dimensions) |
 | `--radius` | `-r` | Corner radius in pixels | `0` |
+| `--radius-percent` | | Corner radius as % of min dimension (0–50); mutually exclusive with `--radius` | `0` |
 | `--preset` | `-p` | Size preset from the table below | none |
+| `--resize-mode` | | How to resize non-square inputs: `stretch`, `fit` (letterbox), `cover` (crop center) | `stretch` |
 | `--out` | `-o` | Output directory | `./icons` |
 | `--force` | `-f` | Overwrite existing files | `false` |
 | `--config` | `-c` | Path to a JSON config file | auto-detect `iconkit.json` |
-| `--pad` |  | Padding ratio from `0.0` to `0.5` | `0` |
-| `--bg` |  | Background color in hex, such as `#ffffff` | transparent |
-| `--ico` |  | Also generate `favicon.ico` for sizes `<= 256` | `false` |
+| `--pad` | | Padding ratio from `0.0` to `0.5` | `0` |
+| `--bg` | | Background color in hex, such as `#ffffff` | transparent |
+| `--ico` | | Also generate `favicon.ico` for sizes `<= 256` | `false` |
+| `--maskable` | | Apply 18 % padding for Android maskable/adaptive icons | `false` |
+| `--output-name` | | Output filename template: `{name}`, `{size}`, `{width}`, `{height}`, `{ext}` | auto |
+| `--html` | | Generate `icons.html` with `<link>` tags for all outputs | `false` |
+| `--manifest` | | Generate `manifest.json` (Web App Manifest) | `false` |
+| `--dry-run` | | Preview output without writing any files | `false` |
+| `--quiet` | | Suppress per-file output; only print final summary | `false` |
+| `--verbose` | | Print source/target dimensions and per-file timing | `false` |
+| `--continue-on-error` | | In batch mode, continue after per-file failures | `false` |
+| `--concurrency` | `-j` | Number of parallel workers for batch processing | `NumCPU` |
+| `--format` | | Output image format: `png`, `webp` | `png` |
+| `--webp-quality` | | WebP output quality (0–100) | `90` |
 | `--version` | `-v` | Print version | none |
 
 When `-p` is specified, `-s` is ignored.
@@ -197,6 +268,16 @@ When `--ico` is also enabled, iconkit keeps the existing multi-size favicon flow
 | `pwa` | 192, 512 | Progressive Web App |
 | `ios` | 20, 29, 40, 58, 60, 76, 80, 87, 120, 152, 167, 180, 1024 | iOS AppIcon |
 | `android` | 36, 48, 72, 96, 144, 192, 512 | Android mipmap and Play Store |
+| `macos` | 16, 32, 64, 128, 256, 512, 1024 | macOS App Icon (`.icns` sources) |
+| `windows` | 16, 24, 32, 48, 64, 128, 256 | Windows Shell + Microsoft Store |
+| `electron` | 16, 32, 48, 64, 128, 256, 512, 1024 | Electron cross-platform apps |
+| `tauri` | 32, 128, 256 | Tauri v2 apps |
+
+For Tauri, use `--output-name "{width}x{height}"` to match the expected filenames:
+
+```bash
+iconkit icon.png -p tauri --output-name "{width}x{height}"
+```
 
 ## favicon.ico
 
@@ -228,12 +309,23 @@ You can combine both:
 iconkit icon.png --pad 0.1 --bg "#1a1a2e" -r 20 -p web --ico
 ```
 
+## Maskable Icons
+
+Android adaptive icons require the icon content to sit within a 72 % safe zone (18 % padding on each side). Use `--maskable` to apply this automatically:
+
+```bash
+iconkit icon.png -p android --maskable --manifest
+```
+
+`--maskable` sets padding to 18 % (or keeps your existing `--pad` if it is already larger) and marks icons as `"purpose": "maskable"` in the generated `manifest.json`.
+
 ## JSON Config
 
 Create an `iconkit.json` in your project root:
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/Tendo33/iconkit/main/iconkit.schema.json",
   "input": "icon.png",
   "sizes": [16, 32, 64, 128],
   "radius": 20,
@@ -246,15 +338,23 @@ Create an `iconkit.json` in your project root:
 }
 ```
 
-The JSON config supports `input`, `sizes`, `radius`, `preset`, `out`, `force`, `pad`, `bg`, and `ico`.
+The JSON config supports all CLI flags. CLI flags always override values from the config file.
 
 If `input` is set in `iconkit.json`, you can run `iconkit` without passing a positional input path.
 
-CLI flags always override values loaded from the config file.
+## JSON Schema
+
+Add `"$schema"` to your `iconkit.json` to get auto-complete and validation in VS Code, JetBrains, and other editors that support JSON Schema:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/Tendo33/iconkit/main/iconkit.schema.json"
+}
+```
 
 ## Batch Processing
 
-Pass a directory to process all `.png`, `.jpg`, and `.jpeg` files:
+Pass a directory to process all `.png`, `.jpg`, `.jpeg`, `.webp`, and `.svg` files:
 
 ```bash
 iconkit ./assets/ -s 32,64
@@ -267,6 +367,18 @@ logo-32.png
 logo-64.png
 badge-32.png
 badge-64.png
+```
+
+Use `-j` to set the number of parallel workers (default: number of logical CPUs):
+
+```bash
+iconkit ./assets/ -p web -j 4
+```
+
+Use `--continue-on-error` to process all files even when some fail:
+
+```bash
+iconkit ./assets/ -p web --continue-on-error
 ```
 
 If you run a "processing-only" command in batch mode without `-s` or `-p`, each source image keeps its original dimensions and writes one PNG:
@@ -335,6 +447,8 @@ go test ./... -v
 go build -o iconkit .
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for a full contributor guide.
+
 ## Release
 
 ```bash
@@ -342,11 +456,14 @@ git tag v2.1.0
 git push origin v2.1.0
 ```
 
-Releases are automated with GoReleaser and GitHub Actions.
+Releases are automated with GoReleaser and GitHub Actions. Each release publishes:
+- Linux `.deb`, `.rpm`, `.apk` packages
+- macOS Homebrew cask (`Tendo33/homebrew-tap`)
+- Windows Scoop manifest (`Tendo33/scoop-bucket`)
+- GitHub release with checksums
 
 Before pushing a release tag, add a `GORELEASER_GITHUB_TOKEN` repository secret.
-Use a GitHub PAT that can write to both `Tendo33/iconkit` and `Tendo33/homebrew-tap`.
-If you use a fine-grained PAT, select both repositories and grant repository contents write access.
+Use a GitHub PAT that can write to `Tendo33/iconkit`, `Tendo33/homebrew-tap`, and `Tendo33/scoop-bucket`.
 
 ## License
 

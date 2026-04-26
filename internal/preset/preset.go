@@ -32,6 +32,22 @@ var Registry = map[string]Preset{
 		Sizes:       []int{192, 512},
 		Description: "Progressive Web App (minimum required)",
 	},
+	"macos": {
+		Sizes:       []int{16, 32, 64, 128, 256, 512, 1024},
+		Description: "macOS App Icon (all required sizes for .icns)",
+	},
+	"windows": {
+		Sizes:       []int{16, 24, 32, 48, 64, 128, 256},
+		Description: "Windows Shell + Microsoft Store icon sizes",
+	},
+	"electron": {
+		Sizes:       []int{16, 32, 48, 64, 128, 256, 512, 1024},
+		Description: "Electron cross-platform app icons",
+	},
+	"tauri": {
+		Sizes:       []int{32, 128, 256},
+		Description: "Tauri v2 app icons (use --output-name \"{width}x{height}\" for correct filenames)",
+	},
 }
 
 func Get(name string) (Preset, bool) {

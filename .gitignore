@@ -2,6 +2,7 @@
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
 # Binaries for programs and plugins
+iconkit
 *.exe
 *.exe~
 *.dll
@@ -36,3 +37,5 @@ dist/
 
 # Local worktrees
 .worktrees/
+docs/plans
+.history

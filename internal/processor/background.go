@@ -23,30 +23,30 @@ func FillBackground(img image.Image, bgColor color.Color) *image.NRGBA {
 			src := img.At(x+bounds.Min.X, y+bounds.Min.Y)
 			sR, sG, sB, sA := src.RGBA()
 
-		if sA == 0xffff {
-			dst.Set(x, y, src)
-		} else if sA == 0 {
-			dst.Set(x, y, bgColor)
-		} else {
-			invA := 0xffff - sA
-			outR := sR + bgR*invA/0xffff
-			outG := sG + bgG*invA/0xffff
-			outB := sB + bgB*invA/0xffff
-			outA := sA + bgA*invA/0xffff
+			if sA == 0xffff {
+				dst.Set(x, y, src)
+			} else if sA == 0 {
+				dst.Set(x, y, bgColor)
+			} else {
+				invA := 0xffff - sA
+				outR := sR + bgR*invA/0xffff
+				outG := sG + bgG*invA/0xffff
+				outB := sB + bgB*invA/0xffff
+				outA := sA + bgA*invA/0xffff
 
-			var nr, ng, nb uint8
-			if outA > 0 {
-				nr = uint8((outR * 0xff / outA) & 0xff)
-				ng = uint8((outG * 0xff / outA) & 0xff)
-				nb = uint8((outB * 0xff / outA) & 0xff)
+				var nr, ng, nb uint8
+				if outA > 0 {
+					nr = uint8((outR * 0xff / outA) & 0xff)
+					ng = uint8((outG * 0xff / outA) & 0xff)
+					nb = uint8((outB * 0xff / outA) & 0xff)
+				}
+				dst.Set(x, y, color.NRGBA{
+					R: nr,
+					G: ng,
+					B: nb,
+					A: uint8(outA >> 8),
+				})
 			}
-			dst.Set(x, y, color.NRGBA{
-				R: nr,
-				G: ng,
-				B: nb,
-				A: uint8(outA >> 8),
-			})
-		}
 		}
 	}
 

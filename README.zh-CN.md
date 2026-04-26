@@ -24,12 +24,14 @@
 
 ## 亮点
 
-- 从一张 PNG 或 JPG 快速生成多尺寸图标
-- 支持圆角，并按输出尺寸自动缩放圆角半径
-- 支持为图标增加留白，适合安全区和 maskable icon
+- 支持 PNG、JPG、WebP、SVG 等格式输入，从单张图片生成多尺寸图标
+- 带真实抗锯齿的圆角处理，圆角半径随输出尺寸等比缩放
+- 支持为图标增加留白，适合安全区和 Android maskable icon
 - 支持填充透明区域背景色
 - 可同时导出多尺寸 `favicon.ico`
-- 支持整目录批量处理
+- 支持整目录批量处理，使用并发 Worker 加速
+- 自动生成 `manifest.json` 和 HTML `<link>` 标签
+- 支持非方形输入：letterbox（`fit`）和居中裁剪（`cover`）两种缩放模式
 
 ## 目录
 
@@ -40,7 +42,9 @@
 - [预设尺寸](#预设尺寸)
 - [favicon.ico](#faviconico)
 - [留白与背景](#留白与背景)
+- [Maskable 图标](#maskable-图标)
 - [JSON 配置](#json-配置)
+- [JSON Schema](#json-schema)
 - [批量处理](#批量处理)
 - [输出结果](#输出结果)
 - [开发](#开发)
@@ -111,7 +115,7 @@ iconkit icon.png --pad 0.1 --bg "#ffffff"
 iconkit [input] [options]
 ```
 
-`<input>` 可以是单个 `.png`、`.jpg`、`.jpeg` 文件，也可以是包含图片的目录。
+`<input>` 可以是单个 `.png`、`.jpg`、`.jpeg`、`.webp`、`.svg` 文件，也可以是包含图片的目录。
 
 ### 示例
 
@@ -174,13 +178,26 @@ iconkit icon.png -c iconkit.json
 |------|--------|------|--------|
 | `--sizes` | `-s` | 输出尺寸，逗号分隔 | 自动（默认 `16,32,64,128`；仅使用 `-r` / `--pad` / `--bg` 时保持原图尺寸） |
 | `--radius` | `-r` | 圆角半径，单位像素 | `0` |
+| `--radius-percent` | | 圆角半径占最短边的百分比（0–50）；与 `--radius` 互斥 | `0` |
 | `--preset` | `-p` | 使用下方预设尺寸 | 无 |
+| `--resize-mode` | | 非方形输入的缩放模式：`stretch`（默认）、`fit`（加黑边）、`cover`（居中裁剪） | `stretch` |
 | `--out` | `-o` | 输出目录 | `./icons` |
 | `--force` | `-f` | 覆盖已存在文件 | `false` |
 | `--config` | `-c` | JSON 配置文件路径 | 自动检测 `iconkit.json` |
-| `--pad` |  | 留白比例，范围 `0.0` 到 `0.5` | `0` |
-| `--bg` |  | 十六进制背景色，如 `#ffffff` | 透明 |
-| `--ico` |  | 同时生成尺寸 `<= 256` 的 `favicon.ico` | `false` |
+| `--pad` | | 留白比例，范围 `0.0` 到 `0.5` | `0` |
+| `--bg` | | 十六进制背景色，如 `#ffffff` | 透明 |
+| `--ico` | | 同时生成尺寸 `<= 256` 的 `favicon.ico` | `false` |
+| `--maskable` | | 为 Android maskable 图标自动加 18% 留白 | `false` |
+| `--output-name` | | 输出文件名模板，支持 `{name}`、`{size}`、`{width}`、`{height}`、`{ext}` | 自动 |
+| `--html` | | 生成含 `<link>` 标签的 `icons.html` | `false` |
+| `--manifest` | | 生成 `manifest.json`（Web App Manifest） | `false` |
+| `--dry-run` | | 预览将生成的文件，不实际写入 | `false` |
+| `--quiet` | | 只输出最终汇总，隐藏逐文件日志 | `false` |
+| `--verbose` | | 输出逐文件的尺寸变换信息及处理耗时 | `false` |
+| `--continue-on-error` | | 批量处理时跳过出错文件，最终汇总报错 | `false` |
+| `--concurrency` | `-j` | 批量处理并发数（默认 CPU 核心数） | `NumCPU` |
+| `--format` | | 输出格式：`png`、`webp` | `png` |
+| `--webp-quality` | | WebP 输出质量（0–100） | `90` |
 | `--version` | `-v` | 输出版本号 | 无 |
 
 当指定 `-p` 时，`-s` 会被忽略。
@@ -197,6 +214,16 @@ iconkit icon.png -c iconkit.json
 | `pwa` | 192, 512 | Progressive Web App |
 | `ios` | 20, 29, 40, 58, 60, 76, 80, 87, 120, 152, 167, 180, 1024 | iOS AppIcon |
 | `android` | 36, 48, 72, 96, 144, 192, 512 | Android mipmap 与 Play Store |
+| `macos` | 16, 32, 64, 128, 256, 512, 1024 | macOS App Icon（`.icns` 所需尺寸） |
+| `windows` | 16, 24, 32, 48, 64, 128, 256 | Windows Shell + Microsoft Store |
+| `electron` | 16, 32, 48, 64, 128, 256, 512, 1024 | Electron 跨平台应用 |
+| `tauri` | 32, 128, 256 | Tauri v2 应用 |
+
+Tauri 应用请配合 `--output-name` 使用，以匹配 Tauri 要求的文件命名：
+
+```bash
+iconkit icon.png -p tauri --output-name "{width}x{height}"
+```
 
 ## favicon.ico
 
@@ -228,12 +255,23 @@ iconkit icon.png --bg "#ffffff" -p android
 iconkit icon.png --pad 0.1 --bg "#1a1a2e" -r 20 -p web --ico
 ```
 
+## Maskable 图标
+
+Android 自适应图标要求图标内容在 72% 的安全区内（即四周各留 18% 可裁剪区域）。使用 `--maskable` 可自动完成此处理：
+
+```bash
+iconkit icon.png -p android --maskable --manifest
+```
+
+`--maskable` 会自动将留白设为 18%（若已设置更大的 `--pad` 则保持不变），并在 `manifest.json` 中标记 `"purpose": "maskable"`。
+
 ## JSON 配置
 
 可在项目根目录创建 `iconkit.json`：
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/Tendo33/iconkit/main/iconkit.schema.json",
   "input": "icon.png",
   "sizes": [16, 32, 64, 128],
   "radius": 20,
@@ -246,15 +284,23 @@ iconkit icon.png --pad 0.1 --bg "#1a1a2e" -r 20 -p web --ico
 }
 ```
 
-当前 JSON 配置支持 `input`、`sizes`、`radius`、`preset`、`out`、`force`、`pad`、`bg`、`ico`。
+JSON 配置支持所有 CLI 参数。命令行参数的优先级始终高于配置文件。
 
 如果在 `iconkit.json` 里设置了 `input`，执行 `iconkit` 时可以不再额外传位置参数。
 
-命令行参数的优先级始终高于配置文件。
+## JSON Schema
+
+在 `iconkit.json` 中加入 `"$schema"` 字段，可在 VS Code、JetBrains 等编辑器中获得自动补全和校验：
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/Tendo33/iconkit/main/iconkit.schema.json"
+}
+```
 
 ## 批量处理
 
-传入目录时，会处理其中所有 `.png`、`.jpg`、`.jpeg` 文件：
+传入目录时，会处理其中所有 `.png`、`.jpg`、`.jpeg`、`.webp`、`.svg` 文件：
 
 ```bash
 iconkit ./assets/ -s 32,64
@@ -335,6 +381,8 @@ go test ./... -v
 go build -o iconkit .
 ```
 
+详细贡献指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 发布
 
 ```bash
@@ -342,7 +390,11 @@ git tag v2.1.0
 git push origin v2.1.0
 ```
 
-发布流程由 GoReleaser 与 GitHub Actions 自动完成。
+发布流程由 GoReleaser 与 GitHub Actions 自动完成，每次发布会同步：
+- Linux `.deb`、`.rpm`、`.apk` 包
+- macOS Homebrew cask（`Tendo33/homebrew-tap`）
+- Windows Scoop manifest（`Tendo33/scoop-bucket`）
+- GitHub Release 及校验文件
 
 ## 许可证
 MIT

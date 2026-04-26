@@ -47,6 +47,45 @@ changelog:
       - "^ci:"
       - "^chore:"
 
+# Linux packages (deb, rpm, apk)
+nfpms:
+  - id: packages
+    package_name: iconkit
+    vendor: Tendo33
+    homepage: https://github.com/Tendo33/iconkit
+    maintainer: Tendo33 <tendo33@users.noreply.github.com>
+    description: Developer-friendly CLI tool for icon processing — resize, round corners, add padding, fill backgrounds, and generate favicon.ico in one command.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+
+# Windows Scoop manifest
+scoops:
+  - repository:
+      owner: Tendo33
+      name: scoop-bucket
+      branch: main
+    directory: bucket
+    homepage: https://github.com/Tendo33/iconkit
+    description: Developer-friendly CLI tool for icon processing.
+    license: MIT
+
+# macOS ad-hoc code signing (removes Gatekeeper unsigned binary warning without Apple Developer account)
+signs:
+  - artifacts: binary
+    ids:
+      - iconkit
+    cmd: sh
+    args:
+      - "-c"
+      - "command -v codesign >/dev/null 2>&1 && codesign --force --deep -s - '${artifact}' || true"
+    signature: "${artifact}"
+
 homebrew_casks:
   - name: iconkit
     repository:

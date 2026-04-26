@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/Tendo33/iconkit/main/iconkit.schema.json",
+  "title": "iconkit configuration",
+  "description": "Configuration file for iconkit icon generation CLI (iconkit.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "input": {
+      "type": "string",
+      "description": "Path to the input image file (.png, .jpg, .jpeg, .webp, .svg) or a directory of images"
+    },
+    "sizes": {
+      "type": "array",
+      "description": "Output sizes in pixels (square). Ignored when 'preset' is set.",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "examples": [[16, 32, 64, 128]]
+    },
+    "radius": {
+      "type": "integer",
+      "description": "Corner radius in pixels. Without sizes/preset, keeps the original image dimensions.",
+      "minimum": 0
+    },
+    "radius-percent": {
+      "type": "number",
+      "description": "Corner radius as a percentage of the minimum dimension (0–50). Mutually exclusive with 'radius'.",
+      "minimum": 0,
+      "maximum": 50
+    },
+    "preset": {
+      "type": "string",
+      "description": "Size preset. Overrides 'sizes' when set.",
+      "enum": [
+        "web",
+        "ios",
+        "android",
+        "chrome-ext",
+        "firefox-ext",
+        "pwa",
+        "macos",
+        "windows",
+        "electron",
+        "tauri"
+      ]
+    },
+    "out": {
+      "type": "string",
+      "description": "Output directory path.",
+      "default": "./icons"
+    },
+    "force": {
+      "type": "boolean",
+      "description": "Overwrite existing output files.",
+      "default": false
+    },
+    "pad": {
+      "type": "number",
+      "description": "Padding ratio around the icon (0.0–0.5 exclusive, e.g. 0.1 = 10%).",
+      "minimum": 0,
+      "exclusiveMaximum": 0.5
+    },
+    "bg": {
+      "type": "string",
+      "description": "Background fill color as a hex string. Fills transparent areas.",
+      "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+      "examples": ["#ffffff", "#1a1a2e", "ff0000"]
+    },
+    "ico": {
+      "type": "boolean",
+      "description": "Also generate a multi-size favicon.ico alongside PNG outputs.",
+      "default": false
+    },
+    "resize-mode": {
+      "type": "string",
+      "description": "How to resize non-square inputs: stretch (default, may distort), fit (letterbox with bg color), cover (crop center).",
+      "enum": ["stretch", "fit", "cover"],
+      "default": "stretch"
+    },
+    "output-name": {
+      "type": "string",
+      "description": "Output filename template. Supports {name}, {size}, {width}, {height}, {ext}.",
+      "examples": ["{width}x{height}", "{name}_{size}", "icon_{size}"]
+    },
+    "html": {
+      "type": "boolean",
+      "description": "Generate icons.html with <link> tags for all output icons.",
+      "default": false
+    },
+    "manifest": {
+      "type": "boolean",
+      "description": "Generate manifest.json (Web App Manifest) for all output icons.",
+      "default": false
+    },
+    "maskable": {
+      "type": "boolean",
+      "description": "Apply 18% padding for Android maskable icons (sets pad to 0.18 if not already larger).",
+      "default": false
+    },
+    "dry-run": {
+      "type": "boolean",
+      "description": "Preview output without writing any files.",
+      "default": false
+    },
+    "quiet": {
+      "type": "boolean",
+      "description": "Suppress per-file output; only print the final summary.",
+      "default": false
+    },
+    "verbose": {
+      "type": "boolean",
+      "description": "Print per-file processing details including source/target dimensions and timing.",
+      "default": false
+    },
+    "continue-on-error": {
+      "type": "boolean",
+      "description": "In batch mode, continue processing when individual files fail.",
+      "default": false
+    },
+    "concurrency": {
+      "type": "integer",
+      "description": "Number of parallel workers for batch processing. Defaults to the number of logical CPUs.",
+      "minimum": 1
+    },
+    "format": {
+      "type": "string",
+      "description": "Output image format.",
+      "enum": ["png", "webp"],
+      "default": "png"
+    },
+    "webp-quality": {
+      "type": "number",
+      "description": "WebP output quality (0–100). Only used when format is 'webp'.",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 90
+    }
+  },
+  "additionalProperties": false
+}

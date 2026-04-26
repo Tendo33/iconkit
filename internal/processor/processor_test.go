@@ -54,6 +54,31 @@ func TestRoundCorners_ZeroRadius(t *testing.T) {
 	}
 }
 
+func TestRoundCorners_AntiAlias(t *testing.T) {
+	// With a large enough image and radius, boundary pixels on the arc edge
+	// should have intermediate alpha values (anti-aliasing), not just 0 or 65535.
+	// Image: 200x200, radius: 40. Corner arc center: (40, 40).
+	// Pixels at ~45 degrees, distance ≈ 40 from corner center should be on the boundary.
+	// (11,11): dist from (40,40) ≈ 40.30, which is within [r-√2, r+√2] ≈ [38.58, 41.41].
+	src := newTestImage(200, 200)
+	result := RoundCorners(src, 40)
+
+	foundIntermediate := false
+	// Check several pixels expected to be near the arc boundary
+	for _, pt := range [][2]int{{11, 11}, {12, 11}, {11, 12}, {28, 2}, {2, 28}} {
+		x, y := pt[0], pt[1]
+		_, _, _, a := result.At(x, y).RGBA()
+		// alpha is 16-bit; intermediate means 0 < a < 65535
+		if a > 0 && a < 0xffff {
+			foundIntermediate = true
+			break
+		}
+	}
+	if !foundIntermediate {
+		t.Error("expected at least one boundary pixel with intermediate alpha (anti-aliasing)")
+	}
+}
+
 func TestRoundCorners_WithRadius(t *testing.T) {
 	src := newTestImage(100, 100)
 	result := RoundCorners(src, 20)

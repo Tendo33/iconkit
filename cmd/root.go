@@ -16,15 +16,28 @@ import (
 var version = "dev"
 
 var (
-	sizes      string
-	radius     int
-	presetName string
-	outDir     string
-	force      bool
-	configFile string
-	padding    float64
-	bgColor    string
-	ico        bool
+	sizes          string
+	radius         int
+	radiusPercent  float64
+	presetName     string
+	outDir         string
+	force          bool
+	configFile     string
+	padding        float64
+	bgColor        string
+	ico            bool
+	resizeMode     string
+	outputName     string
+	generateHTML   bool
+	generateManifest bool
+	maskable       bool
+	dryRun         bool
+	quiet          bool
+	verbose        bool
+	continueOnErr  bool
+	concurrency    int
+	format         string
+	webpQuality    float64
 )
 
 var rootCmd = &cobra.Command{
@@ -43,29 +56,59 @@ Examples:
   iconkit icon.png
   iconkit icon.png -s 16,32,64,128
   iconkit icon.png -r 20
+  iconkit icon.png --radius-percent 25
   iconkit icon.png -r 20 -s 16,32,64,128
   iconkit icon.png -p web
   iconkit icon.png -p chrome-ext
   iconkit icon.png -p firefox-ext
   iconkit icon.png --ico -p web
   iconkit icon.png --pad 0.1 --bg "#ffffff"
+  iconkit icon.png --resize-mode fit --bg "#ffffff" -s 128
+  iconkit icon.png -p web --html --manifest
+  iconkit icon.png -p android --maskable
   iconkit -c iconkit.json
-  iconkit icon.png -r 24 -s 16,32,64 -o ./dist`,
+  iconkit icon.png -r 24 -s 16,32,64 -o ./dist
+  iconkit ./assets/ -p web -j 4
+  iconkit icon.png --dry-run -p ios`,
 	Version: version,
 	Args:    cobra.MaximumNArgs(1),
 	RunE:    run,
 }
 
 func init() {
+	// Core flags
 	rootCmd.Flags().StringVarP(&sizes, "sizes", "s", "", "output sizes, comma-separated; overrides processing-only mode (e.g. 16,32,64)")
 	rootCmd.Flags().IntVarP(&radius, "radius", "r", 0, "corner radius in pixels; without -s/-p outputs one PNG at the original size")
-	rootCmd.Flags().StringVarP(&presetName, "preset", "p", "", "size preset (web, ios, android, chrome-ext, firefox-ext, pwa)")
+	rootCmd.Flags().Float64Var(&radiusPercent, "radius-percent", 0, "corner radius as percent of min dimension (0-50); mutually exclusive with --radius")
+	rootCmd.Flags().StringVarP(&presetName, "preset", "p", "", "size preset (web, ios, android, chrome-ext, firefox-ext, pwa, macos, windows, electron, tauri)")
 	rootCmd.Flags().StringVarP(&outDir, "out", "o", "", "output directory (default: ./icons)")
 	rootCmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing files")
 	rootCmd.Flags().StringVarP(&configFile, "config", "c", "", "config file path (default: auto-detect iconkit.json)")
 	rootCmd.Flags().Float64Var(&padding, "pad", 0, "padding ratio around icon (0.0-0.5, e.g. 0.1 = 10%); without -s/-p outputs one PNG at the original size")
 	rootCmd.Flags().StringVar(&bgColor, "bg", "", "background color in hex (e.g. \"#ffffff\", \"ff0000\"); without -s/-p outputs one PNG at the original size")
 	rootCmd.Flags().BoolVar(&ico, "ico", false, "also generate favicon.ico (sizes <= 256); keeps multi-size output")
+
+	// Resize mode
+	rootCmd.Flags().StringVar(&resizeMode, "resize-mode", "stretch", "resize mode: stretch (default), fit (letterbox), cover (crop center)")
+
+	// Output naming
+	rootCmd.Flags().StringVar(&outputName, "output-name", "", "output filename template: {name},{size},{width},{height},{ext} (e.g. \"{width}x{height}\")")
+
+	// Ecosystem generation
+	rootCmd.Flags().BoolVar(&generateHTML, "html", false, "generate icons.html with <link> tags for all output icons")
+	rootCmd.Flags().BoolVar(&generateManifest, "manifest", false, "generate manifest.json (Web App Manifest) for all output icons")
+	rootCmd.Flags().BoolVar(&maskable, "maskable", false, "apply 18% padding for Android maskable icons (sets --pad 0.18 if not larger)")
+
+	// DX flags
+	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview output without writing any files")
+	rootCmd.Flags().BoolVar(&quiet, "quiet", false, "suppress per-file output, only print final summary")
+	rootCmd.Flags().BoolVar(&verbose, "verbose", false, "print per-file processing details including timing")
+	rootCmd.Flags().BoolVar(&continueOnErr, "continue-on-error", false, "in batch mode, continue processing on per-file errors")
+	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 0, "number of parallel workers for batch processing (default: NumCPU)")
+
+	// Format flags
+	rootCmd.Flags().StringVar(&format, "format", "png", "output format: png (default), webp")
+	rootCmd.Flags().Float64Var(&webpQuality, "webp-quality", 90, "WebP output quality (0-100, default 90)")
 }
 
 func Execute() error {
@@ -84,22 +127,52 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	results, err := runner.Run(opts, os.Stdout)
-	if err != nil {
+	if err != nil && !opts.ContinueOnError {
 		return err
 	}
 
-	fmt.Printf("\nDone! %d files saved to %s\n", len(results), opts.Out)
-	return nil
+	if opts.DryRun {
+		fmt.Printf("\n[dry-run] total: %d file(s) would be written to %s\n", len(results), opts.Out)
+	} else if !opts.Quiet {
+		fmt.Printf("\nDone! %d files saved to %s\n", len(results), opts.Out)
+	} else {
+		fmt.Printf("Done! %d files saved to %s\n", len(results), opts.Out)
+	}
+	return err
 }
 
 func buildOptions(inputPath string) (runner.Options, error) {
 	opts := runner.Options{
-		Input:   inputPath,
-		Radius:  radius,
-		Out:     "./icons",
-		Force:   force,
-		Padding: padding,
-		Ico:     ico,
+		Input:            inputPath,
+		Radius:           radius,
+		RadiusPercent:    radiusPercent,
+		Out:              "./icons",
+		Force:            force,
+		Padding:          padding,
+		Ico:              ico,
+		ResizeMode:       resizeMode,
+		OutputNameTemplate: outputName,
+		GenerateHTML:     generateHTML,
+		GenerateManifest: generateManifest,
+		Maskable:         maskable,
+		DryRun:           dryRun,
+		Quiet:            quiet,
+		Verbose:          verbose,
+		ContinueOnError:  continueOnErr,
+		Concurrency:      concurrency,
+		Format:           format,
+		WebPQuality:      webpQuality,
+	}
+
+	// Validate mutually exclusive flags
+	if radius > 0 && radiusPercent > 0 {
+		return opts, fmt.Errorf("--radius and --radius-percent are mutually exclusive")
+	}
+	if quiet && verbose {
+		return opts, fmt.Errorf("--quiet and --verbose are mutually exclusive")
+	}
+	if radiusPercent < 0 || radiusPercent > 50 {
+		return opts, fmt.Errorf("--radius-percent must be between 0 and 50, got %v", radiusPercent)
 	}
 
 	// Load config file (explicit or auto-detect)
@@ -122,6 +195,9 @@ func buildOptions(inputPath string) (runner.Options, error) {
 		if cfg.Radius > 0 && radius == 0 {
 			opts.Radius = cfg.Radius
 		}
+		if cfg.RadiusPercent > 0 && radiusPercent == 0 {
+			opts.RadiusPercent = cfg.RadiusPercent
+		}
 		if cfg.Out != "" && outDir == "" {
 			opts.Out = cfg.Out
 		}
@@ -142,6 +218,42 @@ func buildOptions(inputPath string) (runner.Options, error) {
 		}
 		if len(cfg.Sizes) > 0 && sizes == "" {
 			opts.Sizes = cfg.Sizes
+		}
+		if cfg.ResizeMode != "" && resizeMode == "stretch" {
+			opts.ResizeMode = cfg.ResizeMode
+		}
+		if cfg.OutputNameTemplate != "" && outputName == "" {
+			opts.OutputNameTemplate = cfg.OutputNameTemplate
+		}
+		if cfg.GenerateHTML && !generateHTML {
+			opts.GenerateHTML = cfg.GenerateHTML
+		}
+		if cfg.GenerateManifest && !generateManifest {
+			opts.GenerateManifest = cfg.GenerateManifest
+		}
+		if cfg.Maskable && !maskable {
+			opts.Maskable = cfg.Maskable
+		}
+		if cfg.DryRun && !dryRun {
+			opts.DryRun = cfg.DryRun
+		}
+		if cfg.Quiet && !quiet {
+			opts.Quiet = cfg.Quiet
+		}
+		if cfg.Verbose && !verbose {
+			opts.Verbose = cfg.Verbose
+		}
+		if cfg.ContinueOnError && !continueOnErr {
+			opts.ContinueOnError = cfg.ContinueOnError
+		}
+		if cfg.Concurrency > 0 && concurrency == 0 {
+			opts.Concurrency = cfg.Concurrency
+		}
+		if cfg.Format != "" && format == "png" {
+			opts.Format = cfg.Format
+		}
+		if cfg.WebPQuality > 0 && webpQuality == 90 {
+			opts.WebPQuality = cfg.WebPQuality
 		}
 	}
 
@@ -173,7 +285,7 @@ func buildOptions(inputPath string) (runner.Options, error) {
 				presetName, strings.Join(preset.Names(), ", "))
 		}
 		if sizes != "" {
-			fmt.Println("Note: -s is ignored when -p is specified")
+			fmt.Fprintln(os.Stderr, "Note: -s is ignored when -p is specified")
 		}
 		opts.Sizes = p.Sizes
 		opts.Preset = presetName
@@ -185,7 +297,7 @@ func buildOptions(inputPath string) (runner.Options, error) {
 		opts.Sizes = parsed
 	}
 
-	hasPureProcessing := opts.Radius > 0 || opts.Padding > 0 || opts.BgColor != nil
+	hasPureProcessing := opts.Radius > 0 || opts.RadiusPercent > 0 || opts.Padding > 0 || opts.BgColor != nil || opts.Maskable
 	if presetName == "" && len(opts.Sizes) == 0 && hasPureProcessing && !opts.Ico {
 		opts.OriginalSizeOutput = true
 	}

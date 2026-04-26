@@ -765,3 +765,252 @@ func TestRun_OriginalSizeOutput_BatchAvoidsNameCollisions(t *testing.T) {
 		}
 	}
 }
+
+// ---- New feature tests ----
+
+func TestRun_DryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 64, 64)
+	outDir := filepath.Join(tmpDir, "dry-out")
+
+	var buf bytes.Buffer
+	results, err := Run(Options{
+		Input:  inputPath,
+		Sizes:  []int{32},
+		Out:    outDir,
+		DryRun: true,
+	}, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// dry-run should still return results (for summary)
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
+	}
+	// Directory should NOT be created
+	if _, err := os.Stat(outDir); !os.IsNotExist(err) {
+		t.Error("dry-run should not create output directory")
+	}
+	// Output should contain [dry-run]
+	if !strings.Contains(buf.String(), "[dry-run]") {
+		t.Errorf("dry-run output should contain [dry-run], got: %s", buf.String())
+	}
+}
+
+func TestRun_ResizeMode_Fit(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Non-square input: 320x160
+	inputPath := createTestPNG(t, tmpDir, "wide.png", 320, 160)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:      inputPath,
+		Sizes:      []int{64},
+		Out:        outDir,
+		ResizeMode: "fit",
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	f, _ := os.Open(results[0].Path)
+	defer f.Close()
+	img, _ := png.Decode(f)
+	// fit mode produces exactly 64x64
+	if img.Bounds().Dx() != 64 || img.Bounds().Dy() != 64 {
+		t.Errorf("fit mode should produce 64x64, got %dx%d", img.Bounds().Dx(), img.Bounds().Dy())
+	}
+}
+
+func TestRun_ResizeMode_Cover(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "wide.png", 320, 160)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:      inputPath,
+		Sizes:      []int{64},
+		Out:        outDir,
+		ResizeMode: "cover",
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f, _ := os.Open(results[0].Path)
+	defer f.Close()
+	img, _ := png.Decode(f)
+	if img.Bounds().Dx() != 64 || img.Bounds().Dy() != 64 {
+		t.Errorf("cover mode should produce 64x64, got %dx%d", img.Bounds().Dx(), img.Bounds().Dy())
+	}
+}
+
+func TestRun_RadiusPercent(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 128, 128)
+	outDir := filepath.Join(tmpDir, "out")
+
+	// 50% radius makes a circle-ish shape, corner should be transparent
+	results, err := Run(Options{
+		Input:         inputPath,
+		Sizes:         []int{64},
+		RadiusPercent: 50,
+		Out:           outDir,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f, _ := os.Open(results[0].Path)
+	defer f.Close()
+	img, _ := png.Decode(f)
+	_, _, _, a := img.At(0, 0).RGBA()
+	if a != 0 {
+		t.Error("corner should be transparent with 50% radius")
+	}
+}
+
+func TestRun_OutputNameTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "app.png", 128, 128)
+	outDir := filepath.Join(tmpDir, "out")
+
+	results, err := Run(Options{
+		Input:              inputPath,
+		Sizes:              []int{32, 64},
+		Out:                outDir,
+		OutputNameTemplate: "{width}x{height}",
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	names := map[string]bool{}
+	for _, r := range results {
+		names[filepath.Base(r.Path)] = true
+	}
+	if !names["32x32.png"] {
+		t.Error("expected output file 32x32.png")
+	}
+	if !names["64x64.png"] {
+		t.Error("expected output file 64x64.png")
+	}
+}
+
+func TestRun_GenerateHTML(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 256, 256)
+	outDir := filepath.Join(tmpDir, "out")
+
+	_, err := Run(Options{
+		Input:        inputPath,
+		Sizes:        []int{16, 32, 180},
+		Out:          outDir,
+		GenerateHTML: true,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	htmlPath := filepath.Join(outDir, "icons.html")
+	if _, err := os.Stat(htmlPath); os.IsNotExist(err) {
+		t.Fatal("icons.html should be generated")
+	}
+	data, _ := os.ReadFile(htmlPath)
+	content := string(data)
+	if !strings.Contains(content, `rel="icon"`) {
+		t.Error("icons.html should contain rel=\"icon\" link tags")
+	}
+	if !strings.Contains(content, `rel="apple-touch-icon"`) {
+		t.Error("icons.html should contain apple-touch-icon for 180px")
+	}
+}
+
+func TestRun_GenerateManifest(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputPath := createTestPNG(t, tmpDir, "icon.png", 512, 512)
+	outDir := filepath.Join(tmpDir, "out")
+
+	_, err := Run(Options{
+		Input:            inputPath,
+		Sizes:            []int{192, 512},
+		Out:              outDir,
+		GenerateManifest: true,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mfPath := filepath.Join(outDir, "manifest.json")
+	if _, err := os.Stat(mfPath); os.IsNotExist(err) {
+		t.Fatal("manifest.json should be generated")
+	}
+	data, _ := os.ReadFile(mfPath)
+	content := string(data)
+	if !strings.Contains(content, `"icons"`) {
+		t.Error("manifest.json should contain icons key")
+	}
+	if !strings.Contains(content, "512x512") {
+		t.Error("manifest.json should contain 512x512 size")
+	}
+}
+
+func TestRun_ContinueOnError(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputDir := filepath.Join(tmpDir, "input")
+	os.MkdirAll(inputDir, 0o755)
+	createTestPNG(t, inputDir, "good.png", 64, 64)
+
+	// Create a corrupt PNG
+	corruptPath := filepath.Join(inputDir, "bad.png")
+	os.WriteFile(corruptPath, []byte("not a valid image"), 0o644)
+
+	outDir := filepath.Join(tmpDir, "out")
+	var buf bytes.Buffer
+	results, err := Run(Options{
+		Input:           inputDir,
+		Sizes:           []int{32},
+		Out:             outDir,
+		ContinueOnError: true,
+	}, &buf)
+
+	// Should still have results for the good file
+	if len(results) == 0 {
+		t.Error("should have processed the good file despite error in bad file")
+	}
+	// Should return a summary error
+	if err == nil {
+		t.Error("expected a summary error when some files failed")
+	}
+}
+
+func TestRun_NewPresets(t *testing.T) {
+	presetSizes := map[string]int{
+		"macos":    7,
+		"windows":  7,
+		"electron": 8,
+		"tauri":    3,
+	}
+	for name, expectedCount := range presetSizes {
+		t.Run(name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			inputPath := createTestPNG(t, tmpDir, "icon.png", 1024, 1024)
+			outDir := filepath.Join(tmpDir, "out")
+
+			results, err := Run(Options{
+				Input:  inputPath,
+				Preset: name,
+				Out:    outDir,
+				Force:  true,
+			}, nil)
+			if err != nil {
+				t.Fatalf("preset %q: unexpected error: %v", name, err)
+			}
+			if len(results) != expectedCount {
+				t.Errorf("preset %q: expected %d icons, got %d", name, expectedCount, len(results))
+			}
+		})
+	}
+}

@@ -304,6 +304,7 @@ func TestBuildOptions_PureProcessingWithIcoKeepsMultiSizeOutput(t *testing.T) {
 func resetRootFlags() {
 	sizes = ""
 	radius = 0
+	radiusPercent = 0
 	presetName = ""
 	outDir = ""
 	force = false
@@ -311,6 +312,18 @@ func resetRootFlags() {
 	padding = 0
 	bgColor = ""
 	ico = false
+	resizeMode = "stretch"
+	outputName = ""
+	generateHTML = false
+	generateManifest = false
+	maskable = false
+	dryRun = false
+	quiet = false
+	verbose = false
+	continueOnErr = false
+	concurrency = 0
+	format = "png"
+	webpQuality = 90
 }
 
 func findPOSIXShell(t *testing.T) string {
