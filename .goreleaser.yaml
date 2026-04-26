@@ -65,6 +65,8 @@ nfpms:
     priority: optional
 
 # Windows Scoop manifest
+# Requires GORELEASER_GITHUB_TOKEN to have contents:write on Tendo33/scoop-bucket.
+# To skip scoop publishing in a specific run, set SKIP_SCOOP=true in the workflow env.
 scoops:
   - repository:
       owner: Tendo33
